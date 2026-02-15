@@ -1,4 +1,8 @@
-# MathPracs Tutoring API
+<p align="center">
+  <img src="./mathpracs-logo.png" alt="MathPracs Logo" width="350"/>
+</p>
+<h1 align="center">MathPracs Tutoring API</h1>
+
 
 A serverless API for managing tutoring sessions, built with FastAPI and designed to run on AWS Lambda.
 
