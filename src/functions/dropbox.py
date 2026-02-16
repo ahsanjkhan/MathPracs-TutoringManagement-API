@@ -89,3 +89,70 @@ def create_file_request(title: str, folder_path: str) -> str | None:
                 pass
         logger.error(f"Failed to create file request: {e}")
         raise
+
+
+def get_latest_cursor() -> str | None:
+    """Get a cursor for the current state of the parent folder. Used for tracking changes."""
+    try:
+        dbx = get_dropbox_client()
+        result = dbx.files_list_folder_get_latest_cursor(
+            path=settings.dropbox_parent_folder,
+            recursive=True
+        )
+        return result.cursor
+    except ApiError as e:
+        logger.error(f"Failed to get Dropbox cursor: {e}")
+        return None
+
+
+def list_folder_changes(cursor: str) -> tuple[list[dict], str | None]:
+    """
+    List changes since the given cursor.
+    Returns (list of new/modified files, new_cursor).
+    Each file dict contains: name, path, student_name (extracted from path).
+    """
+    try:
+        dbx = get_dropbox_client()
+        result = dbx.files_list_folder_continue(cursor)
+
+        files = []
+        for entry in result.entries:
+            # Only process file additions (not deletions or folders)
+            if hasattr(entry, 'name') and hasattr(entry, 'path_display'):
+                # Skip if it's a folder
+                if hasattr(entry, 'is_downloadable') or entry.__class__.__name__ == 'FileMetadata':
+                    # Extract student name from path
+                    # Path format: /Student Folders/Aiden MathPracs/homework.pdf
+                    path_parts = entry.path_display.split('/')
+                    student_name = None
+                    if len(path_parts) >= 3:
+                        folder_name = path_parts[2]  # "Aiden MathPracs"
+                        # Extract first name before "MathPracs"
+                        if "mathpracs" in folder_name.lower():
+                            student_name = folder_name.lower().replace("mathpracs", "").strip().title()
+
+                    files.append({
+                        "name": entry.name,
+                        "path": entry.path_display,
+                        "student_name": student_name
+                    })
+
+        new_cursor = result.cursor if result.has_more else result.cursor
+        return files, new_cursor
+
+    except ApiError as e:
+        logger.error(f"Failed to list Dropbox changes: {e}")
+        return [], None
+
+
+def extract_student_name_from_path(path: str) -> str | None:
+    """
+    Extract student name from Dropbox path.
+    Path format: /Student Folders/Aiden MathPracs/homework.pdf -> "Aiden"
+    """
+    path_parts = path.split('/')
+    if len(path_parts) >= 3:
+        folder_name = path_parts[2]  # "Aiden MathPracs"
+        if "mathpracs" in folder_name.lower():
+            return folder_name.lower().replace("mathpracs", "").strip().title()
+    return None

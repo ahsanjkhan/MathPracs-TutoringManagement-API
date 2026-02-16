@@ -89,6 +89,8 @@ def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
         update_data["tutorEmail"] = updates.tutor_email
     if updates.tutor_phone is not None:
         update_data["tutorPhone"] = updates.tutor_phone
+    if updates.discord_channel_id is not None:
+        update_data["discordChannelId"] = updates.discord_channel_id
 
     if not update_data:
         return existing

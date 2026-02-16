@@ -7,7 +7,7 @@ import re
 from src.config import get_settings
 from src.constants import SESSION_KEYWORD, SESSION_CUTOFF_DATE, SESSION_LOOKAHEAD_DAYS
 from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox
-#from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
+from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
 from src.models.tutor_model import TutorUpdate, TutorStatus
 from src.models.session_model import SessionUpdate, SessionStatus
 from src.models.calendar_state_model import CalendarListState
@@ -107,10 +107,11 @@ def sync_calendar_list() -> dict:
             )
             created += 1
 
-            #todo  COMMENT LINES 110-113 to enable Discord channel creation for new tutors
-            #channel_id = discord_utils.create_tutor_channel(display_name)
-            #if channel_id:
-                #logger.info(f"Created Discord channel for tutor: {display_name}")
+            # Discord channel creation for new tutors (comment out lines 111-115 to disable)
+            channel_id = discord_utils.create_tutor_channel(display_name)
+            if channel_id:
+                logger.info(f"Created Discord channel for tutor: {display_name}")
+                tutor_functions.update_tutor(tutor.tutor_id, TutorUpdate(discord_channel_id=channel_id))
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()

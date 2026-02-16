@@ -20,6 +20,7 @@ class Tutor(BaseModel):
     tutor_timezone: Optional[str] = None
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
+    discord_channel_id: Optional[str] = None
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -41,6 +42,8 @@ class Tutor(BaseModel):
             data["tutorEmail"] = self.tutor_email
         if self.tutor_phone:
             data["tutorPhone"] = self.tutor_phone
+        if self.discord_channel_id:
+            data["discordChannelId"] = self.discord_channel_id
         return data
 
     @classmethod
@@ -55,6 +58,7 @@ class Tutor(BaseModel):
             tutor_timezone=item.get("tutorTimezone"),
             tutor_email=item.get("tutorEmail"),
             tutor_phone=item.get("tutorPhone"),
+            discord_channel_id=item.get("discordChannelId"),
             created_at=datetime.fromisoformat(item["createdAt"]),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
@@ -67,6 +71,7 @@ class TutorUpdate(BaseModel):
     tutor_timezone: Optional[str] = None
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
+    discord_channel_id: Optional[str] = None
 
 
 class TutorResponse(BaseModel):
@@ -79,5 +84,6 @@ class TutorResponse(BaseModel):
     tutor_timezone: Optional[str] = None
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
+    discord_channel_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
