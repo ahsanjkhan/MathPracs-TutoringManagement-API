@@ -7,6 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from src.config import get_settings
+from discord import Interaction
+
 
 settings = get_settings()
 
@@ -41,10 +43,10 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
 
-@bot.tree.command(name="ping", description="Test if bot is working")
+@bot.tree.command(name="ping_bot", description="Test if MathPracs Tutoring Bot is connected")
 async def ping(interaction: discord.Interaction):
     """Simple ping command to test bot."""
-    await interaction.response.send_message("Pong!")
+    await interaction.response.send_message("Pong!")  # type: ignore
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    api_base_url: str = "http://localhost:8000"
     # AWS
     aws_region: str = "us-east-1"
 
@@ -20,9 +21,6 @@ class Settings(BaseSettings):
     # Google Drive / Dropbox
     dropbox_parent_folder: str = "/Student Folders"
     parent_drive_folder_id: str = "1DIoIcOLHN-9J6JtZDbU1aMafTy3KEj_N"
-
-    # Discord Bot (optional - only needed when running bot)
-    api_base_url: str = "http://localhost:8000"
 
     class Config:
         env_prefix = "TUTORING_"
