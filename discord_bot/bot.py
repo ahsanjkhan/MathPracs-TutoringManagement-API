@@ -8,17 +8,48 @@ from datetime import datetime, timedelta, timezone
 from discord import app_commands
 from discord.ext import commands
 from src.config import get_settings
-from src.functions import tutor_functions, session_functions
+from src.functions import tutor_functions, session_functions, dynamodb
 from src.functions.google_docs import extract_student_name
 
 settings = get_settings()
+
+CALENDAR_LIST_SYNC_TYPE = "calendarList"
+
+
+def get_last_sync_ago() -> str:
+    """Get how long ago the last sync happened, formatted as a human-readable string."""
+    try:
+        item = dynamodb.get_item(settings.calendar_sync_table, {"syncType": CALENDAR_LIST_SYNC_TYPE})
+        if item and item.get("lastSyncAt"):
+            last_sync = datetime.fromisoformat(item["lastSyncAt"])
+            # Make timezone-aware if not already
+            if last_sync.tzinfo is None:
+                last_sync = last_sync.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            delta = now - last_sync
+
+            minutes = int(delta.total_seconds() / 60)
+            if minutes < 1:
+                return "just now"
+            elif minutes < 60:
+                return f"{minutes} min ago"
+            elif minutes < 1440:  # 24 hours
+                hours = minutes // 60
+                return f"{hours} hr ago"
+            else:
+                days = minutes // 1440
+                return f"{days} day{'s' if days > 1 else ''} ago"
+        return "never"
+    except Exception:
+        return "unknown"
+
 
 # Timezone mappings (UTC offset in hours)
 TIMEZONE_OFFSETS = {
     "karachi": 5,      # UTC+5
     "lahore": 5,       # UTC+5
     "islamabad": 5,    # UTC+5
-    "frankfurt": 1,    # UTC+1
+    "berlin": 1,    # UTC+1
 }
 
 # Fetch Discord token from Secrets Manager
@@ -55,13 +86,14 @@ async def on_ready():
 @bot.tree.command(name="ping_bot", description="Test if MathPracs Tutoring Bot is connected")
 async def ping(interaction: discord.Interaction):
     """Simple ping command to test bot."""
-    await interaction.response.send_message("Pong!")
+    sync_ago = get_last_sync_ago()
+    await interaction.response.send_message(f"Pong! (Last sync: {sync_ago})", ephemeral=True)
 
 
 @bot.tree.command(name="sessions", description="View your scheduled sessions for the next 24 hours")
 async def sessions(interaction: discord.Interaction):
     """Show tutor's sessions in the next 24 hours."""
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
 
     # Get the channel where command was invoked
     channel_id = str(interaction.channel_id)
@@ -69,7 +101,7 @@ async def sessions(interaction: discord.Interaction):
     # Look up tutor by Discord channel ID
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
     if not tutor:
-        await interaction.followup.send("This channel is not linked to a tutor.")
+        await interaction.followup.send("This channel is not linked to a tutor.", ephemeral=True)
         return
 
     # Get tutor's first name from database
@@ -97,8 +129,13 @@ async def sessions(interaction: discord.Interaction):
     # Sort by start time
     upcoming.sort(key=lambda x: x.start)
 
+    sync_ago = get_last_sync_ago()
+
     if not upcoming:
-        await interaction.followup.send(f"Hi {user_mention}, there are no sessions scheduled for **{tutor_name}** in the next 24 hours.")
+        await interaction.followup.send(
+            f"Hi {user_mention}, there are no sessions scheduled for **{tutor_name}** in the next 24 hours.\n\n_Last sync: {sync_ago}_",
+            ephemeral=True
+        )
         return
 
     # Format response
@@ -110,7 +147,8 @@ async def sessions(interaction: discord.Interaction):
         student_name = extract_student_name(s.summary) or "Unknown"
         lines.append(f"• **{student_name}** at {time_str}")
 
-    await interaction.followup.send("\n".join(lines))
+    lines.append(f"\n_Last sync: {sync_ago}_")
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
 
 
 if __name__ == "__main__":
