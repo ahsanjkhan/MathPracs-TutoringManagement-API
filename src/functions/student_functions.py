@@ -81,6 +81,8 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
         update_data["hourlyPrice5"] = updates.hourly_price_5
     if updates.hourly_price_no_show is not None:
         update_data["hourlyPriceNoShow"] = updates.hourly_price_no_show
+    if updates.payment_collected_by is not None:
+        update_data["paymentCollectedBy"] = updates.payment_collected_by.value
 
     if not update_data:
         return existing
@@ -125,6 +127,8 @@ def patch_student(student_name: str, patch: StudentPatch) -> Optional[Student]:
         update_data["hourlyPrice5"] = patch.hourly_price_5
     if patch.hourly_price_no_show is not None:
         update_data["hourlyPriceNoShow"] = patch.hourly_price_no_show
+    if patch.payment_collected_by is not None:
+        update_data["paymentCollectedBy"] = patch.payment_collected_by.value
 
     if not update_data:
         return existing

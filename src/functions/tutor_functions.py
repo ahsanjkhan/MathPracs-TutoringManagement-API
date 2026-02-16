@@ -100,6 +100,10 @@ def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
         update_data["tutorPhone"] = updates.tutor_phone
     if updates.discord_channel_id is not None:
         update_data["discordChannelId"] = updates.discord_channel_id
+    if updates.discord_onboarding_message_id is not None:
+        update_data["discordOnboardingMessageId"] = updates.discord_onboarding_message_id
+    if updates.tutor_timezone is not None:
+        update_data["tutorTimezone"] = updates.tutor_timezone
 
     if not update_data:
         return existing

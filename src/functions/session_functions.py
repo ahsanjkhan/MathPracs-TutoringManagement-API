@@ -4,7 +4,7 @@ import re
 from boto3.dynamodb.conditions import Key
 
 from src.config import get_settings
-from src.constants import SESSION_KEYWORD, SESSION_CUTOFF_DATE
+from src.config import SESSION_CUTOFF_DATE
 from src.functions import dynamodb
 from src.models.session_model import Session, SessionStatus, SessionCreate, SessionUpdate
 
@@ -127,7 +127,7 @@ def event_to_session(tutor_id: str, event: dict) -> Optional[Session]:
 
     summary = event.get("summary", "")
     # Only sync events with "tutoring" in the title (case-insensitive)
-    if not re.search(SESSION_KEYWORD, summary, flags=re.IGNORECASE):
+    if not re.search(settings.session_keyword, summary, flags=re.IGNORECASE):
         return None
 
     start = parse_calendar_datetime(event.get("start", {}))

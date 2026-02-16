@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -22,8 +23,16 @@ class Settings(BaseSettings):
     dropbox_parent_folder: str = "/Student Folders"
     parent_drive_folder_id: str = "1DIoIcOLHN-9J6JtZDbU1aMafTy3KEj_N"
 
+    # Session sync settings
+    session_keyword: str = r"\btutoring\b"  # Regex to match tutoring events
+    session_lookahead_days: int = 7  # How many days ahead to sync
+
     class Config:
         env_prefix = "TUTORING_"
+
+
+# Cutoff date for session sync (only sync sessions on or after this date)
+SESSION_CUTOFF_DATE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 @lru_cache

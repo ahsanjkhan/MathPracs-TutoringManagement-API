@@ -21,6 +21,7 @@ class Tutor(BaseModel):
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None
+    discord_onboarding_message_id: Optional[str] = None
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -44,6 +45,8 @@ class Tutor(BaseModel):
             data["tutorPhone"] = self.tutor_phone
         if self.discord_channel_id:
             data["discordChannelId"] = self.discord_channel_id
+        if self.discord_onboarding_message_id:
+            data["discordOnboardingMessageId"] = self.discord_onboarding_message_id
         return data
 
     @classmethod
@@ -59,6 +62,7 @@ class Tutor(BaseModel):
             tutor_email=item.get("tutorEmail"),
             tutor_phone=item.get("tutorPhone"),
             discord_channel_id=item.get("discordChannelId"),
+            discord_onboarding_message_id=item.get("discordOnboardingMessageId"),
             created_at=datetime.fromisoformat(item["createdAt"]),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
@@ -71,6 +75,8 @@ class TutorUpdate(BaseModel):
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None
+    discord_onboarding_message_id: Optional[str] = None
+    tutor_timezone: Optional[str] = "karachi"
 
 
 class TutorResponse(BaseModel):
@@ -84,5 +90,6 @@ class TutorResponse(BaseModel):
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None
+    discord_onboarding_message_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime

@@ -5,7 +5,7 @@ from typing import Optional
 import re
 
 from src.config import get_settings
-from src.constants import SESSION_KEYWORD, SESSION_CUTOFF_DATE, SESSION_LOOKAHEAD_DAYS
+from src.config import SESSION_CUTOFF_DATE
 from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox
 from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
 from src.models.tutor_model import TutorUpdate, TutorStatus
@@ -83,7 +83,7 @@ def sync_calendar_list() -> dict:
             if access_role not in ("writer", "owner"):
                 continue
 
-            if not re.search(SESSION_KEYWORD, display_name, flags=re.IGNORECASE):
+            if not re.search(settings.session_keyword, display_name, flags=re.IGNORECASE):
                 continue
 
         existing_tutor = tutor_functions.get_tutor_by_calendar_id(calendar_id)
@@ -107,13 +107,16 @@ def sync_calendar_list() -> dict:
             )
             created += 1
 
-            # Discord channel creation for new tutors (comment out lines 111-117 to disable)
+            # Discord channel creation for new tutors (comment out lines 111-120 to disable)
             channel_id = discord_utils.create_tutor_channel(display_name)
             if channel_id:
                 logger.info(f"Created Discord channel for tutor: {display_name}")
-                tutor_functions.update_tutor(tutor.tutor_id, TutorUpdate(discord_channel_id=channel_id))
-                # Send onboarding message to the new channel
-                discord_utils.send_onboarding_message(channel_id, display_name)
+                # Send onboarding message and get its ID
+                onboarding_msg_id = discord_utils.send_onboarding_message(channel_id, display_name)
+                tutor_functions.update_tutor(
+                    tutor.tutor_id,
+                    TutorUpdate(discord_channel_id=channel_id, discord_onboarding_message_id=onboarding_msg_id)
+                )
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
@@ -166,7 +169,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
     updated = 0
     deleted = 0
     time_min = SESSION_CUTOFF_DATE.isoformat().replace("+00:00", "Z")
-    time_max = (datetime.now(timezone.utc) + timedelta(days=SESSION_LOOKAHEAD_DAYS)).isoformat().replace("+00:00", "Z")
+    time_max = (datetime.now(timezone.utc) + timedelta(days=settings.session_lookahead_days)).isoformat().replace("+00:00", "Z")
 
     # First pass: collect all events from all tutors
     events_by_tutor = {}
@@ -191,7 +194,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
 
             # Check if event has "tutoring" keyword
             summary = event.get("summary", "")
-            has_tutoring_keyword = bool(re.search(SESSION_KEYWORD, summary, flags=re.IGNORECASE))
+            has_tutoring_keyword = bool(re.search(settings.session_keyword, summary, flags=re.IGNORECASE))
 
             # If no "tutoring" keyword, delete from DB if it exists
             if not has_tutoring_keyword:
@@ -289,7 +292,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                         # Only attach to tutoring events for this student
                                         if (evt_id and
                                             evt.get("status") != "cancelled" and
-                                            re.search(SESSION_KEYWORD, evt_summary, flags=re.IGNORECASE) and
+                                            re.search(settings.session_keyword, evt_summary, flags=re.IGNORECASE) and
                                             student_name.lower() in evt_summary.lower()):
                                             try:
                                                 attached = google_calendar.attach_doc_to_event(

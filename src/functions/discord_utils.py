@@ -1,9 +1,16 @@
 import json
 import logging
 import re
+import sys
 import boto3
 import httpx
+from pathlib import Path
 from src.config import get_settings
+
+# Add discord_bot to path for importing TUTOR_COMMANDS
+_discord_bot_path = Path(__file__).parent.parent.parent / "discord_bot"
+if str(_discord_bot_path) not in sys.path:
+    sys.path.insert(0, str(_discord_bot_path))
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -163,20 +170,29 @@ def notify_homework_upload(student_name: str, file_name: str, tutor_discord_chan
     return send_channel_message(tutor_discord_channel_id, message) is not None
 
 
-def send_onboarding_message(channel_id: str, tutor_name: str) -> bool:
-    """
-    Send a welcome/onboarding message to a newly created tutor channel and pin it.
-    """
-    # Extract first name
+def get_onboarding_message_content(tutor_name: str) -> str:
+    """Get the onboarding message content. Commands list is dynamically generated from TUTOR_COMMANDS."""
+    try:
+        from tutor_slash_commands import TUTOR_COMMANDS
+    except ImportError:
+        # Fallback if import fails (e.g., running outside bot context)
+        TUTOR_COMMANDS = {
+            "sessions": "View your scheduled sessions for the next 24 hours",
+            "refresh_commands": "Update the pinned message with latest commands",
+            "ping_bot": "Test if the bot is connected",
+        }
+
     first_name = tutor_name.split()[0] if tutor_name else "Tutor"
 
-    message = f"""👋 **Welcome, {first_name}!**
+    # Build commands list dynamically
+    commands_list = "\n".join([f"• `/{cmd}` - {desc}" for cmd, desc in TUTOR_COMMANDS.items()])
+
+    return f"""👋 **Welcome, {first_name}!**
 
 This is your private MathPracs tutor channel. Here you'll receive notifications and can manage your tutoring sessions.
 
 **Available Commands:**
-• `/sessions` - View your scheduled sessions for the next 24 hours
-• `/ping_bot` - Test if the bot is connected
+{commands_list}
 
 **What to expect:**
 • 📁 Notifications when students upload homework files
@@ -184,8 +200,55 @@ This is your private MathPracs tutor channel. Here you'll receive notifications 
 
 Happy tutoring! 🎓"""
 
+
+def send_onboarding_message(channel_id: str, tutor_name: str) -> str | None:
+    """
+    Send a welcome/onboarding message to a newly created tutor channel and pin it.
+    Returns the message ID if successful, None otherwise.
+    """
+    message = get_onboarding_message_content(tutor_name)
     message_id = send_channel_message(channel_id, message)
     if message_id:
-        pin_message(channel_id, message_id)
-        return True
-    return False
+        pinned = pin_message(channel_id, message_id)
+        if not pinned:
+            logger.warning(f"Message sent but failed to pin in channel {channel_id}")
+        return message_id
+    return None
+
+
+def edit_message(channel_id: str, message_id: str, new_content: str) -> bool:
+    """Edit an existing message in a Discord channel."""
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+
+    if not bot_token:
+        logger.error("Discord bot_token not configured")
+        return False
+
+    try:
+        response = httpx.patch(
+            f"https://discord.com/api/v10/channels/{channel_id}/messages/{message_id}",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={"content": new_content},
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Edited message {message_id} in channel {channel_id}")
+            return True
+        else:
+            logger.error(f"Failed to edit message: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        return False
+
+
+def update_onboarding_message(channel_id: str, message_id: str, tutor_name: str) -> bool:
+    """Update the onboarding message with the latest slash_commands list."""
+    new_content = get_onboarding_message_content(tutor_name)
+    return edit_message(channel_id, message_id, new_content)

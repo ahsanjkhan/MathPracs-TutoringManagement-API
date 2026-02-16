@@ -1,6 +1,13 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
+
+
+class PaymentCollector(str, Enum):
+    MUAZ = "muaz"
+    AHSAN = "ahsan"
+    STRIPE = "stripe"
 
 
 class PhoneNumber(BaseModel):
@@ -30,6 +37,7 @@ class Student(BaseModel):
     hourly_price_4: Optional[float] = None
     hourly_price_5: Optional[float] = None
     hourly_price_no_show: Optional[float] = None
+    payment_collected_by: Optional[PaymentCollector] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     def to_dynamodb(self) -> dict:
@@ -73,6 +81,8 @@ class Student(BaseModel):
             data["hourlyPrice5"] = self.hourly_price_5
         if self.hourly_price_no_show is not None:
             data["hourlyPriceNoShow"] = self.hourly_price_no_show
+        if self.payment_collected_by is not None:
+            data["paymentCollectedBy"] = self.payment_collected_by.value
         return data
 
     @classmethod
@@ -121,6 +131,7 @@ class Student(BaseModel):
             hourly_price_4=float(item["hourlyPrice4"]) if item.get("hourlyPrice4") is not None else None,
             hourly_price_5=float(item["hourlyPrice5"]) if item.get("hourlyPrice5") is not None else None,
             hourly_price_no_show=float(item["hourlyPriceNoShow"]) if item.get("hourlyPriceNoShow") is not None else None,
+            payment_collected_by=PaymentCollector(item["paymentCollectedBy"]) if item.get("paymentCollectedBy") else None,
             created_at=datetime.fromisoformat(item["createdAt"]),
         )
 
@@ -145,6 +156,7 @@ class StudentUpdate(BaseModel):
     hourly_price_4: Optional[float] = None
     hourly_price_5: Optional[float] = None
     hourly_price_no_show: Optional[float] = None
+    payment_collected_by: Optional[PaymentCollector] = None
 
 
 class StudentPatch(BaseModel):
@@ -161,3 +173,4 @@ class StudentPatch(BaseModel):
     hourly_price_4: Optional[float] = None
     hourly_price_5: Optional[float] = None
     hourly_price_no_show: Optional[float] = None
+    payment_collected_by: Optional[PaymentCollector] = None
