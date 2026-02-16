@@ -4,13 +4,22 @@ sys.path.append("..")
 import json
 import boto3
 import discord
+from datetime import datetime, timedelta, timezone
 from discord import app_commands
 from discord.ext import commands
 from src.config import get_settings
-from discord import Interaction
-
+from src.functions import tutor_functions, session_functions
+from src.functions.google_docs import extract_student_name
 
 settings = get_settings()
+
+# Timezone mappings (UTC offset in hours)
+TIMEZONE_OFFSETS = {
+    "karachi": 5,      # UTC+5
+    "lahore": 5,       # UTC+5
+    "islamabad": 5,    # UTC+5
+    "frankfurt": 1,    # UTC+1
+}
 
 # Fetch Discord token from Secrets Manager
 _discord_token = None
@@ -46,7 +55,62 @@ async def on_ready():
 @bot.tree.command(name="ping_bot", description="Test if MathPracs Tutoring Bot is connected")
 async def ping(interaction: discord.Interaction):
     """Simple ping command to test bot."""
-    await interaction.response.send_message("Pong!")  # type: ignore
+    await interaction.response.send_message("Pong!")
+
+
+@bot.tree.command(name="sessions", description="View your scheduled sessions for the next 24 hours")
+async def sessions(interaction: discord.Interaction):
+    """Show tutor's sessions in the next 24 hours."""
+    await interaction.response.defer()
+
+    # Get the channel where command was invoked
+    channel_id = str(interaction.channel_id)
+
+    # Look up tutor by Discord channel ID
+    tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
+    if not tutor:
+        await interaction.followup.send("This channel is not linked to a tutor.")
+        return
+
+    # Get tutor's first name from database
+    tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
+    # Discord mention for whoever invoked the command
+    user_mention = interaction.user.mention
+
+    # Get timezone offset
+    tz_offset = TIMEZONE_OFFSETS.get(tutor.tutor_timezone.lower(), 5)  # Default to Karachi
+    tutor_tz = timezone(timedelta(hours=tz_offset))
+
+    # Get sessions for this tutor
+    all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
+
+    # Filter to next 24 hours
+    now = datetime.now(timezone.utc)
+    next_24h = now + timedelta(hours=24)
+
+    upcoming = []
+    for s in all_sessions:
+        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        if now <= session_start <= next_24h:
+            upcoming.append(s)
+
+    # Sort by start time
+    upcoming.sort(key=lambda x: x.start)
+
+    if not upcoming:
+        await interaction.followup.send(f"Hi {user_mention}, there are no sessions scheduled for **{tutor_name}** in the next 24 hours.")
+        return
+
+    # Format response
+    lines = [f"Hi {user_mention}, these are the sessions scheduled for **{tutor_name}**:\n"]
+    for s in upcoming:
+        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        local_time = session_start.astimezone(tutor_tz)
+        time_str = local_time.strftime("%I:%M %p")
+        student_name = extract_student_name(s.summary) or "Unknown"
+        lines.append(f"• **{student_name}** at {time_str}")
+
+    await interaction.followup.send("\n".join(lines))
 
 
 if __name__ == "__main__":

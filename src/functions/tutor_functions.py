@@ -63,6 +63,17 @@ def get_tutor_by_calendar_id(calendar_id: str) -> Optional[Tutor]:
     return None
 
 
+def get_tutor_by_discord_channel_id(channel_id: str) -> Optional[Tutor]:
+    """Find a tutor by their Discord channel ID."""
+    items = dynamodb.scan_table(
+        settings.tutors_table,
+        FilterExpression=Attr("discordChannelId").eq(channel_id),
+    )
+    if items:
+        return Tutor.from_dynamodb(items[0])
+    return None
+
+
 def create_tutor(display_name: str, calendar_id: str, access_role: str) -> Tutor:
     """Function to create new tutor. Not used for Route, but for sync purposes."""
     tutor = Tutor(display_name=display_name, calendar_id=calendar_id, access_role=access_role)
@@ -83,8 +94,6 @@ def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
         update_data["status"] = updates.status.value
     if updates.hourly_rate is not None:
         update_data["hourlyRate"] = updates.hourly_rate
-    if updates.tutor_timezone is not None:
-        update_data["tutorTimezone"] = updates.tutor_timezone
     if updates.tutor_email is not None:
         update_data["tutorEmail"] = updates.tutor_email
     if updates.tutor_phone is not None:

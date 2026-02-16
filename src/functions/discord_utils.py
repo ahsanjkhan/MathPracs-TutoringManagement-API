@@ -90,17 +90,17 @@ def create_tutor_channel(tutor_name: str) -> str | None:
         return None
 
 
-def send_channel_message(channel_id: str, message: str) -> bool:
+def send_channel_message(channel_id: str, message: str) -> str | None:
     """
     Send a message to a Discord channel.
-    Returns True if sent successfully, False otherwise.
+    Returns the message ID if sent successfully, None otherwise.
     """
     creds = get_discord_credentials()
     bot_token = creds.get("bot_token")
 
     if not bot_token:
         logger.error("Discord bot_token not configured")
-        return False
+        return None
 
     try:
         response = httpx.post(
@@ -114,14 +114,44 @@ def send_channel_message(channel_id: str, message: str) -> bool:
         )
 
         if response.status_code == 200:
+            message_data = response.json()
+            message_id = message_data.get("id")
             logger.info(f"Sent message to channel {channel_id}")
-            return True
+            return message_id
         else:
             logger.error(f"Failed to send Discord message: {response.status_code} - {response.text}")
-            return False
+            return None
 
     except Exception as e:
         logger.error(f"Error sending Discord message: {e}")
+        return None
+
+
+def pin_message(channel_id: str, message_id: str) -> bool:
+    """Pin a message in a Discord channel."""
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+
+    if not bot_token:
+        logger.error("Discord bot_token not configured")
+        return False
+
+    try:
+        response = httpx.put(
+            f"https://discord.com/api/v10/channels/{channel_id}/pins/{message_id}",
+            headers={"Authorization": f"Bot {bot_token}"},
+            timeout=30.0
+        )
+
+        if response.status_code == 204:
+            logger.info(f"Pinned message {message_id} in channel {channel_id}")
+            return True
+        else:
+            logger.error(f"Failed to pin message: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error pinning message: {e}")
         return False
 
 
@@ -130,4 +160,32 @@ def notify_homework_upload(student_name: str, file_name: str, tutor_discord_chan
     Send a notification to the tutor's Discord channel about a homework upload.
     """
     message = f"📁 **New file uploaded!**\nStudent: **{student_name}**\nFile: `{file_name}`"
-    return send_channel_message(tutor_discord_channel_id, message)
+    return send_channel_message(tutor_discord_channel_id, message) is not None
+
+
+def send_onboarding_message(channel_id: str, tutor_name: str) -> bool:
+    """
+    Send a welcome/onboarding message to a newly created tutor channel and pin it.
+    """
+    # Extract first name
+    first_name = tutor_name.split()[0] if tutor_name else "Tutor"
+
+    message = f"""👋 **Welcome, {first_name}!**
+
+This is your private MathPracs tutor channel. Here you'll receive notifications and can manage your tutoring sessions.
+
+**Available Commands:**
+• `/sessions` - View your scheduled sessions for the next 24 hours
+• `/ping_bot` - Test if the bot is connected
+
+**What to expect:**
+• 📁 Notifications when students upload homework files
+• 📅 Quick access to your upcoming sessions
+
+Happy tutoring! 🎓"""
+
+    message_id = send_channel_message(channel_id, message)
+    if message_id:
+        pin_message(channel_id, message_id)
+        return True
+    return False

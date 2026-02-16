@@ -107,11 +107,13 @@ def sync_calendar_list() -> dict:
             )
             created += 1
 
-            # Discord channel creation for new tutors (comment out lines 111-115 to disable)
+            # Discord channel creation for new tutors (comment out lines 111-117 to disable)
             channel_id = discord_utils.create_tutor_channel(display_name)
             if channel_id:
                 logger.info(f"Created Discord channel for tutor: {display_name}")
                 tutor_functions.update_tutor(tutor.tutor_id, TutorUpdate(discord_channel_id=channel_id))
+                # Send onboarding message to the new channel
+                discord_utils.send_onboarding_message(channel_id, display_name)
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
