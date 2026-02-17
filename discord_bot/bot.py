@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 from src.config import get_settings
 from admin_slash_commands import AdminCommands
+from feedback_views import FeedbackButton
 
 settings = get_settings()
 
@@ -32,6 +33,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     """Called when bot is ready."""
     print(f"Bot is ready! Logged in as {bot.user}")
+
+    # Register persistent view for feedback button (survives bot restarts)
+    bot.add_view(FeedbackButton())
+
     await bot.add_cog(AdminCommands(bot))
     try:
         synced = await bot.tree.sync()

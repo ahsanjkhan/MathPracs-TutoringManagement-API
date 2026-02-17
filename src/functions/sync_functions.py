@@ -222,6 +222,29 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
             if out:
                 if existing:
                     updated += 1
+                    # Check if session just changed from scheduled to completed
+                    if (existing.status == SessionStatus.SCHEDULED and
+                        out.status == SessionStatus.COMPLETED and
+                        tutor.discord_channel_id):
+                        # Send feedback request to tutor's channel
+                        student_name = google_docs.extract_student_name(s.summary) or "Unknown"
+                        tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
+                        # Format session time in tutor's timezone
+                        tz_offsets = {"karachi": 5, "lahore": 5, "islamabad": 5, "berlin": 1}
+                        tz_offset = tz_offsets.get(tutor.tutor_timezone.lower(), 5)
+                        tutor_tz = timezone(timedelta(hours=tz_offset))
+                        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+                        local_time = session_start.astimezone(tutor_tz)
+                        session_time = local_time.strftime("%b %d, %Y at %I:%M %p")
+
+                        discord_utils.send_feedback_request(
+                            channel_id=tutor.discord_channel_id,
+                            session_id=s.session_id,
+                            student_name=student_name,
+                            tutor_name=tutor_name,
+                            session_time=session_time
+                        )
+                        logger.info(f"Sent feedback request for {student_name}'s session to {tutor_name}")
                 else:
                     created += 1
 

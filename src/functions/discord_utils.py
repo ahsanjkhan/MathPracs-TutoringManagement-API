@@ -252,3 +252,131 @@ def update_onboarding_message(channel_id: str, message_id: str, tutor_name: str)
     """Update the onboarding message with the latest slash_commands list."""
     new_content = get_onboarding_message_content(tutor_name)
     return edit_message(channel_id, message_id, new_content)
+
+
+def send_feedback_request(
+    channel_id: str,
+    session_id: str,
+    student_name: str,
+    tutor_name: str,
+    session_time: str
+) -> bool:
+    """
+    Send a feedback request message with a button to the tutor's channel.
+    Uses Discord embeds and components (button).
+    """
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+
+    if not bot_token:
+        logger.error("Discord bot_token not configured")
+        return False
+
+    # Build embed with session info
+    embed = {
+        "title": "📝 Session Completed!",
+        "description": f"Please provide feedback for **{student_name}**'s session.",
+        "color": 5814783,  # Blue color
+        "fields": [
+            {"name": "Session ID", "value": session_id, "inline": True},
+            {"name": "Student", "value": student_name, "inline": True},
+            {"name": "Tutor", "value": tutor_name, "inline": True},
+            {"name": "Time", "value": session_time, "inline": True},
+        ]
+    }
+
+    # Button component
+    components = [
+        {
+            "type": 1,  # Action row
+            "components": [
+                {
+                    "type": 2,  # Button
+                    "style": 1,  # Primary (blue)
+                    "label": "Leave Feedback",
+                    "emoji": {"name": "📝"},
+                    "custom_id": "feedback_button"
+                }
+            ]
+        }
+    ]
+
+    try:
+        response = httpx.post(
+            f"https://discord.com/api/v10/channels/{channel_id}/messages",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "embeds": [embed],
+                "components": components
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Sent feedback request for session {session_id} to channel {channel_id}")
+            return True
+        else:
+            logger.error(f"Failed to send feedback request: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error sending feedback request: {e}")
+        return False
+
+
+def post_feedback_to_channel(
+    student_name: str,
+    tutor_name: str,
+    session_time: str,
+    summary: str
+) -> bool:
+    """
+    Post the AI-generated feedback summary to the session feedback channel.
+    """
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+    feedback_channel_id = creds.get("session_feedback_channel_id")
+
+    if not bot_token:
+        logger.error("Discord bot_token not configured")
+        return False
+
+    if not feedback_channel_id:
+        logger.error("session_feedback_channel_id not configured in Discord credentials")
+        return False
+
+    embed = {
+        "title": "📚 Session Feedback",
+        "color": 3066993,  # Green color
+        "fields": [
+            {"name": "Tutor", "value": tutor_name, "inline": True},
+            {"name": "Student", "value": student_name, "inline": True},
+            {"name": "Time", "value": session_time, "inline": True},
+            {"name": "Summary", "value": summary, "inline": False},
+        ]
+    }
+
+    try:
+        response = httpx.post(
+            f"https://discord.com/api/v10/channels/{feedback_channel_id}/messages",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={"embeds": [embed]},
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Posted feedback for {student_name} to feedback channel")
+            return True
+        else:
+            logger.error(f"Failed to post feedback: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error posting feedback: {e}")
+        return False

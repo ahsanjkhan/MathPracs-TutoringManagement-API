@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     google_credentials_secret_name: str = "tutoring-api/google-credentials"
     dropbox_credentials_secret_name: str = "tutoring-api/dropbox-credentials"
     discord_credentials_secret_name: str = "tutoring-api/discord-credentials"
+    groq_credentials_secret_name: str = "tutoring-api/groq-credentials"
 
     # Google Drive / Dropbox
     dropbox_parent_folder: str = "/Student Folders"
