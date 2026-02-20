@@ -15,14 +15,16 @@ class Settings(BaseSettings):
     students_table: str = "Students"
 
     # Secrets Manager
-    google_credentials_secret_name: str = "tutoring-api/google-credentials"
-    dropbox_credentials_secret_name: str = "tutoring-api/dropbox-credentials"
-    discord_credentials_secret_name: str = "tutoring-api/discord-credentials"
-    groq_credentials_secret_name: str = "tutoring-api/groq-credentials"
+    google_credentials_secret_name: str = "tutoring-api/google-credentials-cdk"
+    dropbox_credentials_secret_name: str = "tutoring-api/dropbox-credentials-cdk"
+    discord_credentials_secret_name: str = "tutoring-api/discord-credentials-cdk"
+    groq_credentials_secret_name: str = "tutoring-api/groq-credentials-cdk"
+
+    # SSM Parameters
+    parent_drive_folder_id_ssm_name: str = "/tutoring-api/parent-drive-folder-id"
+    dropbox_parent_folder_ssm_name: str = "/tutoring-api/dropbox-parent-folder"
 
     # Google Drive / Dropbox
-    dropbox_parent_folder: str = "/Student Folders"
-    parent_drive_folder_id: str = "1DIoIcOLHN-9J6JtZDbU1aMafTy3KEj_N"
 
     # Session sync settings
     session_keyword: str = r"\btutoring\b"  # Regex to match tutoring events

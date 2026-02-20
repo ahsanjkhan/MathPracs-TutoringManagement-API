@@ -6,7 +6,7 @@ import re
 
 from src.config import get_settings
 from src.config import SESSION_CUTOFF_DATE
-from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox
+from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox, ssm_utils
 from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
 from src.models.tutor_model import TutorUpdate, TutorStatus
 from src.models.session_model import SessionUpdate, SessionStatus
@@ -269,12 +269,12 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                     logger.warning(f"Could not attach doc to {s.summary}: {attach_err}")
                             _verified_students.add(student_name)
                         # Also check if doc exists in Drive (fallback for manual docs)
-                        elif student_name not in _verified_students and google_docs.get_existing_student_doc(student_name, settings.parent_drive_folder_id):
+                        elif student_name not in _verified_students and google_docs.get_existing_student_doc(student_name, ssm_utils.get_parent_drive_folder_id()):
                             _verified_students.add(student_name)  # Doc exists, remember it
                         elif student_name not in _verified_students:
                             logger.info(f"Creating student doc for: {student_name}")
                             doc_name = f"{student_name} MathPracs"
-                            doc = google_docs.create_doc(doc_name, settings.parent_drive_folder_id)
+                            doc = google_docs.create_doc(doc_name, ssm_utils.get_parent_drive_folder_id())
                             if doc:
                                 # Create Google Meet space
                                 meet_url = None

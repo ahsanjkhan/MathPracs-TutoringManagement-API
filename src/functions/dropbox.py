@@ -5,6 +5,7 @@ import dropbox
 from dropbox.exceptions import ApiError
 from src.config import get_settings
 from src.functions.utils import retry_on_error
+from src.functions import ssm_utils
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def create_folder(folder_name: str) -> str | None:
     """Create a folder inside the parent folder. Returns the folder path if created or already exists."""
     try:
         dbx = get_dropbox_client()
-        folder_path = f"{settings.dropbox_parent_folder}/{folder_name}"
+        folder_path = f"{ssm_utils.get_dropbox_parent_folder()}/{folder_name}"
         dbx.files_create_folder_v2(folder_path)
         logger.info(f"Created Dropbox folder: {folder_path}")
         return folder_path
@@ -96,7 +97,7 @@ def get_latest_cursor() -> str | None:
     try:
         dbx = get_dropbox_client()
         result = dbx.files_list_folder_get_latest_cursor(
-            path=settings.dropbox_parent_folder,
+            path=ssm_utils.get_dropbox_parent_folder(),
             recursive=True
         )
         return result.cursor
