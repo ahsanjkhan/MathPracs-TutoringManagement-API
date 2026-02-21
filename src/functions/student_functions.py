@@ -1,7 +1,8 @@
 from typing import Optional
 from boto3.dynamodb.conditions import Key
 from src.config import get_settings
-from src.functions import dynamodb
+from src.functions import dynamodb, session_functions
+from src.functions.google_docs import extract_student_name
 from src.models.student_model import Student, StudentUpdate, StudentPatch
 
 settings = get_settings()
@@ -19,13 +20,20 @@ def get_all_students() -> list[Student]:
 
 
 def get_students_by_tutor(tutor_id: str) -> list[Student]:
-    """Get all students associated with a specific tutor using GSI."""
-    items = dynamodb.query_by_gsi(
-        settings.students_table,
-        "tutorId-index",
-        Key("tutorId").eq(tutor_id),
-    )
-    return [Student.from_dynamodb(item) for item in items]
+    """Get all students associated with a specific tutor via their sessions."""
+    sessions = session_functions.get_sessions_by_tutor(tutor_id)
+    student_names = set()
+    for s in sessions:
+        name = extract_student_name(s.summary)
+        if name:
+            student_names.add(normalize_student_name(name))
+
+    students = []
+    for name in student_names:
+        student = get_student(name)
+        if student:
+            students.append(student)
+    return students
 
 
 def get_student(student_name: str) -> Optional[Student]:

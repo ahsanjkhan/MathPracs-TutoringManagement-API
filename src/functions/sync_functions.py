@@ -242,6 +242,9 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                 start=s.start,
                 end=s.end,
                 student_info=s.student_info,
+                utc_start=s.utc_start,
+                utc_end=s.utc_end,
+                event_timezone=s.timezone,
             )
 
             if out:
@@ -319,7 +322,6 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                         google_docs.write_links_to_doc(doc["id"], student_name, view_link, upload_link, meet_url)
 
                                 student = Student(
-                                    tutor_id=tutor.tutor_id,
                                     student_name=student_name,
                                     doc_id=doc["id"],
                                     doc_url=doc.get("url"),

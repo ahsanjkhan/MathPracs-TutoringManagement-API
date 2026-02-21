@@ -87,6 +87,12 @@ def patch_session(tutor_id: str, session_id: str, updates: SessionUpdate) -> Opt
         update_data["start"] = updates.start.isoformat()
     if updates.end is not None:
         update_data["end"] = updates.end.isoformat()
+    if updates.utc_start is not None:
+        update_data["utcStart"] = updates.utc_start.isoformat()
+    if updates.utc_end is not None:
+        update_data["utcEnd"] = updates.utc_end.isoformat()
+    if updates.timezone is not None:
+        update_data["timezone"] = updates.timezone
     if updates.status is not None:
         update_data["status"] = updates.status.value
     if updates.student_info is not None:
@@ -114,13 +120,30 @@ def delete_session(tutor_id: str, session_id: str) -> bool:
 
 
 def parse_calendar_datetime(dt_info: dict) -> Optional[datetime]:
-    """Parse datetime from Google Calendar event. Normalizes Google’s two time formats into one Python datetime"""
+    """Parse datetime from Google Calendar event. Normalizes Google's two time formats into one Python datetime"""
     if "dateTime" in dt_info:
         dt_str = dt_info["dateTime"]
         return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     elif "date" in dt_info:
         return datetime.fromisoformat(dt_info["date"])
     return None
+
+
+def get_event_timezone(event: dict) -> Optional[str]:
+    """Extract timezone from Google Calendar event."""
+    # Try start.timeZone first, then end.timeZone, then fall back to None
+    tz = event.get("start", {}).get("timeZone")
+    if not tz:
+        tz = event.get("end", {}).get("timeZone")
+    return tz
+
+
+def to_utc(dt: datetime) -> datetime:
+    """Convert a datetime to UTC."""
+    if dt.tzinfo is None:
+        # Assume UTC if no timezone
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def event_to_session(tutor_id: str, event: dict) -> Optional[Session]:
@@ -139,13 +162,17 @@ def event_to_session(tutor_id: str, event: dict) -> Optional[Session]:
     if not start or not end or not is_session_after_cutoff(start):
         return None
 
+    # Get UTC times and timezone
+    utc_start = to_utc(start)
+    utc_end = to_utc(end)
+    event_timezone = get_event_timezone(event)
+
     if not summary:
         summary = "Untitled Session"
     description = event.get("description")
 
     now = datetime.now(timezone.utc)
-    end_utc = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
-    status = SessionStatus.COMPLETED if end_utc < now else SessionStatus.SCHEDULED
+    status = SessionStatus.COMPLETED if utc_end < now else SessionStatus.SCHEDULED
 
     return Session(
         tutor_id=tutor_id,
@@ -153,6 +180,9 @@ def event_to_session(tutor_id: str, event: dict) -> Optional[Session]:
         summary=summary,
         start=start,
         end=end,
+        utc_start=utc_start,
+        utc_end=utc_end,
+        timezone=event_timezone,
         status=status,
         student_info=description,
     )
@@ -165,19 +195,35 @@ def upsert_session_from_calendar(
     start: datetime,
     end: datetime,
     student_info: Optional[str] = None,
+    utc_start: Optional[datetime] = None,
+    utc_end: Optional[datetime] = None,
+    event_timezone: Optional[str] = None,
 ) -> Optional[Session]:
     """Create or update a session from calendar data. Auto-sets status based on end time."""
     if not is_session_after_cutoff(start):
         return None
 
     now = datetime.now(timezone.utc)
-    end_utc = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
-    status = SessionStatus.COMPLETED if end_utc < now else SessionStatus.SCHEDULED
+    # Calculate UTC times if not provided
+    if utc_start is None:
+        utc_start = to_utc(start)
+    if utc_end is None:
+        utc_end = to_utc(end)
+    status = SessionStatus.COMPLETED if utc_end < now else SessionStatus.SCHEDULED
 
     existing = get_session(tutor_id, session_id)
 
     if existing:
-        updates = SessionUpdate(summary=summary, start=start, end=end, status=status, student_info=student_info)
+        updates = SessionUpdate(
+            summary=summary,
+            start=start,
+            end=end,
+            utc_start=utc_start,
+            utc_end=utc_end,
+            timezone=event_timezone,
+            status=status,
+            student_info=student_info
+        )
         return patch_session(tutor_id, session_id, updates)
 
     session_data = SessionCreate(
@@ -189,4 +235,9 @@ def upsert_session_from_calendar(
         status=status,
         student_info=student_info,
     )
-    return create_session(session_data)
+    session = create_session(session_data)
+    if session:
+        # Update with extra fields (not in SessionCreate)
+        updates = SessionUpdate(utc_start=utc_start, utc_end=utc_end, timezone=event_timezone)
+        return patch_session(tutor_id, session_id, updates)
+    return session

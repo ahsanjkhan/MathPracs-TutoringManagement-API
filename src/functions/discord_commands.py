@@ -376,7 +376,6 @@ def handle_get_student(interaction: dict) -> dict:
 
     info = f"""**Student: {student.student_name}**
 ```
-Tutor ID:     {student.tutor_id}
 Email:        {student.student_email or 'Not set'}
 Timezone:     {student.student_timezone or 'Not set'}
 Doc ID:       {student.doc_id}

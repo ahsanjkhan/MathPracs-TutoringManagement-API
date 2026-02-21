@@ -16,7 +16,6 @@ class PhoneNumber(BaseModel):
 
 
 class Student(BaseModel):
-    tutor_id: str
     student_name: str
     doc_id: str
     doc_url: Optional[str] = None
@@ -42,7 +41,6 @@ class Student(BaseModel):
 
     def to_dynamodb(self) -> dict:
         data = {
-            "tutorId": self.tutor_id,
             "studentName": self.student_name,
             "docId": self.doc_id,
             "number4": {"phoneNumber": self.number_4.phone_number, "smsEnabled": self.number_4.sms_enabled},
@@ -110,7 +108,6 @@ class Student(BaseModel):
         number_5 = PhoneNumber(phone_number=n5["phoneNumber"], sms_enabled=n5.get("smsEnabled", False))
 
         return cls(
-            tutor_id=item["tutorId"],
             student_name=item["studentName"],
             doc_id=item["docId"],
             doc_url=item.get("docUrl"),

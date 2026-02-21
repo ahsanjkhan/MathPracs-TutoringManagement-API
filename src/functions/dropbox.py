@@ -11,6 +11,17 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 _dropbox_client = None
+_dropbox_credentials = None
+
+
+def get_dropbox_credentials() -> dict:
+    """Get Dropbox credentials from AWS Secrets Manager."""
+    global _dropbox_credentials
+    if _dropbox_credentials is None:
+        secrets_client = boto3.client("secretsmanager", region_name=settings.aws_region)
+        response = secrets_client.get_secret_value(SecretId=settings.dropbox_credentials_secret_name)
+        _dropbox_credentials = json.loads(response["SecretString"])
+    return _dropbox_credentials
 
 
 def get_dropbox_client():
@@ -157,3 +168,68 @@ def extract_student_name_from_path(path: str) -> str | None:
         if "mathpracs" in folder_name.lower():
             return folder_name.lower().replace("mathpracs", "").strip().title()
     return None
+
+
+def get_recent_changes() -> list[dict]:
+    """
+    Get recent file changes from Dropbox.
+    Stores cursor in DynamoDB to track processed changes.
+    Returns list of file entries with path_display, name, and .tag
+    """
+    from src.functions import dynamodb
+
+    CURSOR_KEY = {"syncType": "dropboxCursor"}
+
+    # Get stored cursor from DynamoDB
+    cursor_item = dynamodb.get_item(settings.calendar_sync_table, CURSOR_KEY)
+    cursor = cursor_item.get("cursor") if cursor_item else None
+
+    try:
+        dbx = get_dropbox_client()
+        parent_folder = ssm_utils.get_dropbox_parent_folder()
+
+        if cursor:
+            # Get changes since last cursor
+            result = dbx.files_list_folder_continue(cursor)
+        else:
+            # First time - get current state and save cursor
+            result = dbx.files_list_folder(parent_folder, recursive=True)
+
+        # Collect all entries
+        entries = []
+        for entry in result.entries:
+            entry_dict = {
+                "path_display": getattr(entry, "path_display", ""),
+                "name": getattr(entry, "name", ""),
+                ".tag": entry.__class__.__name__.lower().replace("metadata", "")
+            }
+            entries.append(entry_dict)
+
+        # Handle pagination
+        while result.has_more:
+            result = dbx.files_list_folder_continue(result.cursor)
+            for entry in result.entries:
+                entry_dict = {
+                    "path_display": getattr(entry, "path_display", ""),
+                    "name": getattr(entry, "name", ""),
+                    ".tag": entry.__class__.__name__.lower().replace("metadata", "")
+                }
+                entries.append(entry_dict)
+
+        # Save new cursor to DynamoDB
+        dynamodb.put_item(settings.calendar_sync_table, {
+            "syncType": "dropboxCursor",
+            "cursor": result.cursor
+        })
+
+        logger.info(f"Dropbox changes found: {len(entries)} entries")
+        return entries
+
+    except ApiError as e:
+        # If cursor is invalid, reset and start fresh
+        if "reset" in str(e).lower() or "expired" in str(e).lower():
+            logger.warning("Dropbox cursor expired, resetting...")
+            dynamodb.delete_item(settings.calendar_sync_table, CURSOR_KEY)
+            return []
+        logger.error(f"Failed to get Dropbox changes: {e}")
+        return []
