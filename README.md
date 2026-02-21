@@ -120,6 +120,7 @@ The bot runs serverlessly via HTTP interactions - no EC2 or persistent connectio
 |---------|-------------|
 | `/ping_bot` | Test if bot is connected |
 | `/sessions` | View scheduled sessions for next 24 hours |
+| `/earnings` | View earnings for the current month |
 | `/refresh_commands` | Update pinned onboarding message |
 
 ### Admin Commands

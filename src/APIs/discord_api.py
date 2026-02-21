@@ -84,6 +84,8 @@ async def discord_interactions(request: Request):
             return discord_commands.handle_ping_bot(interaction)
         elif command_name == "sessions":
             return discord_commands.handle_sessions(interaction, application_id)
+        elif command_name == "earnings":
+            return discord_commands.handle_earnings(interaction)
         elif command_name == "refresh_commands":
             return discord_commands.handle_refresh_commands(interaction)
         elif command_name == "manual_sync":

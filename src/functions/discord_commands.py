@@ -2,6 +2,7 @@
 Discord slash command handlers for serverless HTTP interactions.
 These replace the discord.py bot commands.
 """
+import calendar
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -181,6 +182,72 @@ def handle_sessions(interaction: dict, application_id: str) -> dict:
             lines.append(f"- **{student_name}** at {time_str}")
         lines.append(f"\n_Last sync: {sync_ago}_")
         content = "\n".join(lines)
+
+    return {
+        "type": 4,
+        "data": {"content": content, "flags": 64}
+    }
+
+
+def handle_earnings(interaction: dict) -> dict:
+    """Handle /earnings command - shows tutor earnings for the current month."""
+    channel_id = interaction.get("channel_id")
+    user_id = interaction.get("member", {}).get("user", {}).get("id")
+
+    tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
+
+    if not tutor:
+        return {
+            "type": 4,
+            "data": {"content": "This channel is not linked to a tutor.", "flags": 64}
+        }
+
+    tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
+    hourly_rate = tutor.hourly_rate or 0
+
+    # Central Time offset (CST = UTC-6, CDT = UTC-5)
+    # For simplicity, using UTC-6 (CST) - covers most of the year accurately
+    central_tz = timezone(timedelta(hours=-6))
+
+    # Get current date in Central Time
+    now_central = datetime.now(central_tz)
+    year = now_central.year
+    month = now_central.month
+
+    # First day of current month at midnight Central Time
+    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=central_tz)
+
+    # Last day of current month at 23:59:59 Central Time
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
+
+    # Get all sessions for this tutor
+    all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
+
+    # Filter completed sessions within the current month
+    completed_sessions = []
+    for s in all_sessions:
+        if s.status.value != "completed":
+            continue
+        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        # Convert to Central Time for comparison
+        session_central = session_start.astimezone(central_tz)
+        if month_start <= session_central <= month_end:
+            completed_sessions.append(s)
+
+    session_count = len(completed_sessions)
+    total_earnings = session_count * hourly_rate
+
+    month_name = now_central.strftime("%B %Y")
+
+    content = f"""**Earnings Report for {tutor_name}**
+
+**Month:** {month_name}
+**Completed Sessions:** {session_count}
+**Hourly Rate:** ${hourly_rate:.2f}
+**Total Earnings:** ${total_earnings:.2f}
+
+_Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
     return {
         "type": 4,
@@ -545,7 +612,6 @@ def handle_feedback_button(interaction: dict) -> dict:
 
     # Extract info from embed fields
     fields = embed.get("fields", [])
-    session_id = None
     student_name = None
     tutor_name = None
     session_time = None
@@ -553,23 +619,21 @@ def handle_feedback_button(interaction: dict) -> dict:
     for field in fields:
         name = field.get("name")
         value = field.get("value")
-        if name == "Session ID":
-            session_id = value
-        elif name == "Student":
+        if name == "Student":
             student_name = value
         elif name == "Tutor":
             tutor_name = value
         elif name == "Time":
             session_time = value
 
-    if not all([session_id, student_name, tutor_name, session_time]):
+    if not all([student_name, tutor_name, session_time]):
         return {"type": 4, "data": {"content": "Missing session information.", "flags": 64}}
 
     # Return modal for feedback input
     return {
         "type": 9,  # MODAL
         "data": {
-            "custom_id": f"feedback_modal:{session_id}:{student_name}:{tutor_name}:{session_time}",
+            "custom_id": f"feedback_modal:{student_name}:{tutor_name}:{session_time}",
             "title": "Session Feedback",
             "components": [
                 {
@@ -596,13 +660,12 @@ def handle_feedback_modal_submit(interaction: dict) -> dict:
     custom_id = interaction.get("data", {}).get("custom_id", "")
     parts = custom_id.split(":")
 
-    if len(parts) < 5:
+    if len(parts) < 4:
         return {"type": 4, "data": {"content": "Invalid feedback submission.", "flags": 64}}
 
-    session_id = parts[1]
-    student_name = parts[2]
-    tutor_name = parts[3]
-    session_time = ":".join(parts[4:])  # Rejoin in case time has colons
+    student_name = parts[1]
+    tutor_name = parts[2]
+    session_time = ":".join(parts[3:])  # Rejoin in case time has colons
 
     # Extract feedback from modal components
     components = interaction.get("data", {}).get("components", [])

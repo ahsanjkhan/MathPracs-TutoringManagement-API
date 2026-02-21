@@ -1,16 +1,9 @@
 import json
 import logging
 import re
-import sys
 import boto3
 import httpx
-from pathlib import Path
 from src.config import get_settings
-
-# Add discord_bot to path for importing TUTOR_COMMANDS
-_discord_bot_path = Path(__file__).parent.parent.parent / "discord_bot"
-if str(_discord_bot_path) not in sys.path:
-    sys.path.insert(0, str(_discord_bot_path))
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -172,15 +165,12 @@ def notify_homework_upload(student_name: str, file_name: str, tutor_discord_chan
 
 def get_onboarding_message_content(tutor_name: str) -> str:
     """Get the onboarding message content. Commands list is dynamically generated from TUTOR_COMMANDS."""
-    try:
-        from tutor_slash_commands import TUTOR_COMMANDS
-    except ImportError:
-        # Fallback if import fails (e.g., running outside bot context)
-        TUTOR_COMMANDS = {
-            "sessions": "View your scheduled sessions for the next 24 hours",
-            "refresh_commands": "Update the pinned message with latest commands",
-            "ping_bot": "Test if the bot is connected",
-        }
+    TUTOR_COMMANDS = {
+        "sessions": "View your scheduled sessions for the next 24 hours",
+        "earnings": "View your earnings for the current month",
+        "refresh_commands": "Update the pinned message with latest commands",
+        "ping_bot": "Test if the bot is connected",
+    }
 
     first_name = tutor_name.split()[0] if tutor_name else "Tutor"
 
@@ -278,7 +268,6 @@ def send_feedback_request(
         "description": f"Please provide feedback for **{student_name}**'s session.",
         "color": 5814783,  # Blue color
         "fields": [
-            {"name": "Session ID", "value": session_id, "inline": True},
             {"name": "Student", "value": student_name, "inline": True},
             {"name": "Tutor", "value": tutor_name, "inline": True},
             {"name": "Time", "value": session_time, "inline": True},
