@@ -1,0 +1,11 @@
+# Local development and Discord bot dependencies
+# Install with: pip install -r requirements-local.txt
+
+# Include Lambda requirements
+-r requirements.txt
+
+# Local development server
+uvicorn>=0.23.0
+
+# AWS CRT for better performance locally
+botocore[crt]

@@ -64,6 +64,8 @@ class SessionCreate(BaseModel):
 
 class SessionUpdate(BaseModel):
     summary: Optional[str] = None
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
     status: Optional[SessionStatus] = None
     student_info: Optional[str] = None
 

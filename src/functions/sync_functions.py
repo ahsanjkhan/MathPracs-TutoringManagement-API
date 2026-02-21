@@ -177,6 +177,31 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
         events, _ = google_calendar.list_events(tutor.calendar_id, time_min=time_min, time_max=time_max)
         events_by_tutor[tutor.tutor_id] = events
 
+    # Clean up orphaned sessions (sessions that no longer have matching calendar events)
+    for tutor in tutors:
+        calendar_event_ids = set()
+        for event in events_by_tutor.get(tutor.tutor_id, []):
+            event_id = event.get("id")
+            if event_id and event.get("status") != "cancelled":
+                summary = event.get("summary", "")
+                # Only count events with tutoring keyword
+                if re.search(settings.session_keyword, summary, flags=re.IGNORECASE):
+                    calendar_event_ids.add(event_id)
+
+        # Get all sessions for this tutor from DynamoDB
+        existing_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
+        for session in existing_sessions:
+            # If session is in our time window but not on the calendar, delete it
+            session_start = session.start if session.start.tzinfo else session.start.replace(tzinfo=timezone.utc)
+            cutoff = SESSION_CUTOFF_DATE
+            lookahead = datetime.now(timezone.utc) + timedelta(days=settings.session_lookahead_days)
+
+            if cutoff <= session_start <= lookahead:
+                if session.session_id not in calendar_event_ids:
+                    logger.info(f"Deleting orphaned session {session.session_id} for tutor {tutor.tutor_id}")
+                    session_functions.delete_session(tutor.tutor_id, session.session_id)
+                    deleted += 1
+
     # Second pass: process events
     for tutor in tutors:
         for event in events_by_tutor.get(tutor.tutor_id, []):

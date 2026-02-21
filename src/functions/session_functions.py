@@ -83,6 +83,10 @@ def patch_session(tutor_id: str, session_id: str, updates: SessionUpdate) -> Opt
     update_data = {}
     if updates.summary is not None:
         update_data["summary"] = updates.summary
+    if updates.start is not None:
+        update_data["start"] = updates.start.isoformat()
+    if updates.end is not None:
+        update_data["end"] = updates.end.isoformat()
     if updates.status is not None:
         update_data["status"] = updates.status.value
     if updates.student_info is not None:
@@ -173,7 +177,7 @@ def upsert_session_from_calendar(
     existing = get_session(tutor_id, session_id)
 
     if existing:
-        updates = SessionUpdate(summary=summary, status=status, student_info=student_info)
+        updates = SessionUpdate(summary=summary, start=start, end=end, status=status, student_info=student_info)
         return patch_session(tutor_id, session_id, updates)
 
     session_data = SessionCreate(

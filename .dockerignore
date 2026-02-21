@@ -1,0 +1,10 @@
+.venv
+__pycache__
+*.pyc
+.git
+.gitignore
+.idea
+*.egg-info
+.pytest_cache
+tests
+discord_bot

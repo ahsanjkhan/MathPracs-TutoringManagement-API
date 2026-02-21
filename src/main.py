@@ -3,7 +3,7 @@ import sys
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
 from mangum import Mangum
-from src.APIs import tutors_api, sessions_api, sync_api, students_api
+from src.APIs import tutors_api, sessions_api, sync_api, students_api, discord_api
 from src.auth import get_current_user, get_auth_config
 from src.functions import sync_functions
 
@@ -82,7 +82,8 @@ app.include_router(tutors_api.router, dependencies=[Depends(get_current_user)])
 app.include_router(sessions_api.router, dependencies=[Depends(get_current_user)])
 app.include_router(students_api.router, dependencies=[Depends(get_current_user)])
 
-#Public routes (no auth - for EventBridge and health checks)
+#Public routes (no auth - for EventBridge, health checks, and Discord)
 app.include_router(sync_api.router)
+app.include_router(discord_api.router)
 
 handler = Mangum(app, lifespan="auto")
