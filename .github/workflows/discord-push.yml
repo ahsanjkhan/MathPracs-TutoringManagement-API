@@ -14,6 +14,7 @@ jobs:
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.head_commit.author.name }}
           SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
         run: |
@@ -23,7 +24,7 @@ jobs:
 
           payload=$(cat <<EOF
           {
-            "content": "✅ **${REPO}** push to **${BRANCH}** by **${ACTOR}**\n📝 ${COMMIT_MSG}\n🔗 Commit: ${COMMIT_URL}\n📌 Compare: ${COMPARE_URL}"
+            "content": "✅ **${REPO}** push to **${BRANCH}** by **${ACTOR}**\n👤 Author: **${AUTHOR}**\n📝 ${COMMIT_MSG}\n🔗 Commit: ${COMMIT_URL}\n📌 Compare: ${COMPARE_URL}"
           }
           EOF
           )
