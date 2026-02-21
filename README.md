@@ -17,6 +17,8 @@ This API automatically syncs with Google Calendar to track tutoring sessions and
 
 - **Google Calendar Integration** - Auto-discovers tutors and syncs sessions
 - **Student Management** - Auto-creates docs, Meet links, and Dropbox folders
+- **Discord Slash Commands** - Serverless bot via HTTP interactions (no EC2 needed)
+- **Session Feedback** - AI-powered feedback summaries via Groq
 - **Google OAuth2** - Protected API routes with email allowlist
 - **AWS Lambda Ready** - Runs serverless via Mangum adapter
 - **EventBridge Polling** - Syncs every 3 minutes automatically
@@ -31,6 +33,8 @@ This API automatically syncs with Google Calendar to track tutoring sessions and
 | Cloud | AWS Lambda + API Gateway |
 | Scheduler | AWS EventBridge |
 | Storage | Google Drive, Dropbox |
+| Discord | HTTP Interactions (serverless) |
+| AI | Groq (feedback summaries) |
 
 ## Project Structure
 
@@ -43,12 +47,16 @@ src/
 │   ├── tutors_api.py       # Tutor endpoints
 │   ├── sessions_api.py     # Session endpoints
 │   ├── students_api.py     # Student endpoints
-│   └── sync_api.py         # Sync endpoints (EventBridge)
+│   ├── sync_api.py         # Sync endpoints (EventBridge)
+│   └── discord_api.py      # Discord interactions endpoint
 ├── functions/
 │   ├── tutor_functions.py  # Tutor business logic
 │   ├── session_functions.py# Session business logic
 │   ├── student_functions.py# Student business logic
 │   ├── sync_functions.py   # Calendar/event sync logic
+│   ├── discord_commands.py # Discord slash command handlers
+│   ├── discord_utils.py    # Discord API utilities
+│   ├── groq_utils.py       # AI feedback summaries
 │   ├── google_calendar.py  # Google Calendar API
 │   ├── google_docs.py      # Google Drive/Docs API
 │   ├── google_meet.py      # Google Meet API
@@ -59,6 +67,9 @@ src/
     ├── session_model.py    # Session data models
     ├── student_model.py    # Student data models
     └── calendar_state_model.py # Sync state model
+
+scripts/
+└── register_commands.py    # One-time Discord command registration
 ```
 
 ## API Endpoints
@@ -95,6 +106,35 @@ src/
 | POST | `/sync/calendars` | Sync calendars only |
 | POST | `/sync/sessions` | Full sync (calendars + sessions) |
 
+### Discord (Public - Signature Verified)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/discord/interactions` | Discord slash commands & buttons |
+
+## Discord Slash Commands
+
+The bot runs serverlessly via HTTP interactions - no EC2 or persistent connection needed.
+
+### Tutor Commands
+| Command | Description |
+|---------|-------------|
+| `/ping_bot` | Test if bot is connected |
+| `/sessions` | View scheduled sessions for next 24 hours |
+| `/refresh_commands` | Update pinned onboarding message |
+
+### Admin Commands
+| Command | Description |
+|---------|-------------|
+| `/manual_sync` | Trigger calendar + event sync |
+| `/active_tutors` | List all active tutors |
+| `/get_tutor <name>` | View tutor details |
+| `/get_student <name>` | View student details |
+| `/update_tutor <name>` | Update tutor via modal |
+| `/update_student <name>` | Update student via modal |
+
+### Session Feedback
+When a session is completed, tutors receive a feedback prompt with a button. Clicking it opens a modal to enter feedback, which is then summarized by AI (Groq) and posted to a feedback channel.
+
 ## Setup
 
 ### Prerequisites
@@ -107,7 +147,11 @@ src/
 ### 1. Install Dependencies
 
 ```bash
+# For Lambda deployment
 pip install -r requirements.txt
+
+# For local development (includes uvicorn)
+pip install -r requirements-local.txt
 ```
 
 ### 2. AWS Secrets Manager
@@ -136,6 +180,25 @@ Store credentials in AWS Secrets Manager:
 }
 ```
 
+**Discord Credentials** (`tutoring-api/discord-credentials`):
+```json
+{
+  "bot_token": "...",
+  "application_id": "...",
+  "public_key": "...",
+  "guild_id": "...",
+  "bot_id": "...",
+  "session_feedback_channel_id": "..."
+}
+```
+
+**Groq Credentials** (`tutoring-api/groq-credentials`):
+```json
+{
+  "api_key": "..."
+}
+```
+
 ### 3. DynamoDB Tables
 
 Create the following tables:
@@ -158,6 +221,20 @@ Access Swagger UI at: `http://localhost:8000/docs`
 ### 5. Deploy to AWS Lambda
 
 The app uses Mangum for Lambda compatibility. Deploy using your preferred method (SAM, Serverless Framework, CDK, etc.).
+
+### 6. Setup Discord Slash Commands
+
+1. Register commands with Discord:
+```bash
+python scripts/register_commands.py --guild
+```
+
+2. In Discord Developer Portal, set **Interactions Endpoint URL** to:
+```
+https://your-api-gateway-url/prod/discord/interactions
+```
+
+Discord will verify the endpoint before saving.
 
 ## Configuration
 
