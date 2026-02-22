@@ -71,6 +71,7 @@ def create_tutor_channel(tutor_name: str) -> str | None:
                 "name": channel_name,
                 "type": 0,  # Text channel
                 "topic": f"Private channel for {tutor_name}",
+                "parent_id": "1475262651197296680",
                 "permission_overwrites": permission_overwrites
             },
             timeout=30.0
