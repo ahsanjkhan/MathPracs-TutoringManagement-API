@@ -23,7 +23,7 @@ jobs:
 
           payload=$(cat <<EOF
           {
-            "content": "✅ **${{ github.event.repository.name }}** push to **${BRANCH}** by **${ACTOR}**\n👤 ${COMMIT_MSG}\n🔗 Commit: ${COMMIT_URL}\n📌 Compare: ${COMPARE_URL}"
+            "content": "✅ **${{ github.event.repository.name }}** push to **${BRANCH}** by **${ACTOR}**\n👤 ${COMMIT_MSG}\n🔗 Commit: <${COMMIT_URL}>\n📌 Compare: <${COMPARE_URL}>"
           }
           EOF
           )
