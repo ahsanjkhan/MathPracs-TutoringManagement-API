@@ -1,6 +1,7 @@
 import logging
 import threading
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 import re
 
@@ -258,9 +259,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                         student_name = google_docs.extract_student_name(s.summary) or "Unknown"
                         tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
                         # Format session time in tutor's timezone
-                        tz_offsets = {"karachi": 5, "lahore": 5, "islamabad": 5, "berlin": 1}
-                        tz_offset = tz_offsets.get(tutor.tutor_timezone.lower(), 5)
-                        tutor_tz = timezone(timedelta(hours=tz_offset))
+                        tutor_tz = ZoneInfo(tutor.tutor_timezone)
                         session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
                         local_time = session_start.astimezone(tutor_tz)
                         session_time = local_time.strftime("%b %d, %Y at %I:%M %p")

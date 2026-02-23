@@ -17,7 +17,7 @@ class Tutor(BaseModel):
     hourly_rate: float = 10.0
     access_role: str
     status: TutorStatus = TutorStatus.ACTIVE
-    tutor_timezone: str = "karachi"
+    tutor_timezone: str = "Asia/Karachi"
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None
@@ -58,7 +58,7 @@ class Tutor(BaseModel):
             hourly_rate=float(item.get("hourlyRate", 10.0)),
             access_role=item["accessRole"],
             status=TutorStatus(item["status"]),
-            tutor_timezone=item.get("tutorTimezone", "karachi"),
+            tutor_timezone=item.get("tutorTimezone", "Asia/Karachi"),
             tutor_email=item.get("tutorEmail"),
             tutor_phone=item.get("tutorPhone"),
             discord_channel_id=item.get("discordChannelId"),
@@ -76,7 +76,7 @@ class TutorUpdate(BaseModel):
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None
     discord_onboarding_message_id: Optional[str] = None
-    tutor_timezone: Optional[str] = "karachi"
+    tutor_timezone: Optional[str] = "Asia/Karachi"
 
 
 class TutorResponse(BaseModel):
@@ -86,7 +86,7 @@ class TutorResponse(BaseModel):
     hourly_rate: float
     access_role: str
     status: TutorStatus
-    tutor_timezone: str = "karachi"
+    tutor_timezone: str = "Asia/Karachi"
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     discord_channel_id: Optional[str] = None

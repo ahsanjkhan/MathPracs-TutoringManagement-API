@@ -6,6 +6,7 @@ import calendar
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import httpx
@@ -33,14 +34,6 @@ CALENDAR_LIST_SYNC_TYPE = "calendarList"
 ROLE_ADMIN = "Admin"
 ROLE_CHANNEL_ADMIN = "Channel Admin"
 ROLE_TUTOR = "Tutor"
-
-# Timezone offsets
-TIMEZONE_OFFSETS = {
-    "karachi": 5,
-    "lahore": 5,
-    "islamabad": 5,
-    "berlin": 1,
-}
 
 
 def has_role(member_roles: list, role_name: str) -> bool:
@@ -153,8 +146,7 @@ def handle_sessions(interaction: dict, application_id: str) -> dict:
         }
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-    tz_offset = TIMEZONE_OFFSETS.get(tutor.tutor_timezone.lower(), 5)
-    tutor_tz = timezone(timedelta(hours=tz_offset))
+    tutor_tz = ZoneInfo(tutor.tutor_timezone)
 
     all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
 
