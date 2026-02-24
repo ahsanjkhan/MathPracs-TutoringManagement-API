@@ -150,10 +150,10 @@ def extract_student_from_path(path: str) -> str | None:
     # Remove leading slash and split
     parts = path.lstrip("/").split("/")
 
-    if len(parts) < 2:
+    if len(parts) < 3:
         return None
 
-    folder_name = parts[0]
+    folder_name = parts[1]
 
     # Folder name format: "StudentName MathPracs"
     if " MathPracs" in folder_name:
