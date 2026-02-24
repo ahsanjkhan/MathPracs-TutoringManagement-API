@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Request, Response, HTTPException
 
 from src.config import get_settings
-from src.functions import dropbox, discord_utils, student_functions, tutor_functions
+from src.functions import dropbox, discord_utils, tutor_functions, session_functions
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dropbox", tags=["Dropbox Webhook"])
@@ -87,6 +87,19 @@ async def dropbox_webhook_notification(request: Request):
     return {"status": "ok"}
 
 
+def find_tutor_for_student(student_name: str):
+    """
+    Find the current tutor for a student by looking at their most recent session.
+    Tutors can change over time so we don't store tutor_id on the student record.
+    """
+    all_sessions = session_functions.get_all_sessions()
+    student_sessions = [s for s in all_sessions if student_name.lower() in s.summary.lower()]
+    if not student_sessions:
+        return None
+    most_recent = max(student_sessions, key=lambda s: s.start)
+    return tutor_functions.get_tutor(most_recent.tutor_id)
+
+
 def process_dropbox_changes():
     """
     Check for new files in student folders and notify tutors.
@@ -108,22 +121,20 @@ def process_dropbox_changes():
                 continue
 
             # Extract student name from path
-            # Path format: /StudentName MathPracs/filename.pdf
+            # Path format: /Student Folders/StudentName MathPracs/filename.pdf
             student_name = extract_student_from_path(path)
 
             if not student_name:
                 continue
 
-            # Look up student to get tutor
-            student = student_functions.get_student(student_name)
-            if not student:
-                logger.warning(f"Student not found for upload: {student_name}")
+            # Find current tutor via most recent session
+            tutor = find_tutor_for_student(student_name)
+            if not tutor:
+                logger.warning(f"No tutor found for student: {student_name}")
                 continue
 
-            # Get tutor's Discord channel
-            tutor = tutor_functions.get_tutor(student.tutor_id)
-            if not tutor or not tutor.discord_channel_id:
-                logger.warning(f"Tutor or Discord channel not found for student: {student_name}")
+            if not tutor.discord_channel_id:
+                logger.warning(f"Tutor {tutor.display_name} has no Discord channel for student: {student_name}")
                 continue
 
             # Send notification
@@ -132,7 +143,7 @@ def process_dropbox_changes():
                 file_name=name,
                 tutor_discord_channel_id=tutor.discord_channel_id
             )
-            logger.info(f"Notified tutor about upload: {student_name} - {name}")
+            logger.info(f"Notified tutor {tutor.display_name} about upload: {student_name} - {name}")
 
     except Exception as e:
         logger.error(f"Error processing Dropbox changes: {e}")
