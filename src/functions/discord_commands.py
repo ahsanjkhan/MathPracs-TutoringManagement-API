@@ -228,7 +228,11 @@ def handle_earnings(interaction: dict) -> dict:
             completed_sessions.append(s)
 
     session_count = len(completed_sessions)
-    total_earnings = session_count * hourly_rate
+    total_hours = sum(
+        (s.end - s.start).total_seconds() / 3600
+        for s in completed_sessions
+    )
+    total_earnings = total_hours * hourly_rate
 
     month_name = now_central.strftime("%B %Y")
 
@@ -236,7 +240,7 @@ def handle_earnings(interaction: dict) -> dict:
 
 **Month:** {month_name}
 **Completed Sessions:** {session_count}
-**Hourly Rate:** ${hourly_rate:.2f}
+**Hours Tutored:** {total_hours:.1f}
 **Total Earnings:** ${total_earnings:.2f}
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
