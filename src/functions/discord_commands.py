@@ -251,6 +251,64 @@ _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('
     }
 
 
+def handle_total_earnings(interaction: dict) -> dict:
+    """Handle /total_earnings command - admin only. Shows total earnings across all tutors for current month."""
+    if not has_role(interaction.get("member", {}).get("roles", []), ROLE_ADMIN):
+        return {"type": 4, "data": {"content": "You don't have permission to use this command.", "flags": 64}}
+
+    central_tz = timezone(timedelta(hours=-6))
+    now_central = datetime.now(central_tz)
+    year = now_central.year
+    month = now_central.month
+
+    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=central_tz)
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
+
+    tutors = tutor_functions.get_all_tutors(status_filter=TutorStatus.ACTIVE)
+
+    grand_total = 0.0
+    lines = []
+
+    for tutor in tutors:
+        hourly_rate = tutor.hourly_rate or 0
+        all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
+
+        completed = []
+        for s in all_sessions:
+            if s.status.value != "completed":
+                continue
+            session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+            if month_start <= session_start.astimezone(central_tz) <= month_end:
+                completed.append(s)
+
+        if not completed:
+            continue
+
+        total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed)
+        earnings = total_hours * hourly_rate
+        grand_total += earnings
+
+        tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
+        lines.append(f"• **{tutor_name}** — {total_hours:.1f}h × ${hourly_rate:.2f} = **${earnings:.2f}**")
+
+    month_name = now_central.strftime("%B %Y")
+
+    if not lines:
+        content = f"No completed sessions found for {month_name}."
+    else:
+        breakdown = "\n".join(lines)
+        content = f"""**Total Earnings Report — {month_name}**
+
+{breakdown}
+
+**Grand Total: ${grand_total:.2f}**
+
+_Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
+
+    return {"type": 4, "data": {"content": content, "flags": 64}}
+
+
 def handle_refresh_commands(interaction: dict) -> dict:
     """Handle /refresh_commands command."""
     channel_id = interaction.get("channel_id")

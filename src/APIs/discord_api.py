@@ -100,6 +100,8 @@ async def discord_interactions(request: Request):
             return discord_commands.handle_update_tutor(interaction)
         elif command_name == "update_student":
             return discord_commands.handle_update_student(interaction)
+        elif command_name == "earnings_mathpracs":
+            return discord_commands.handle_total_earnings(interaction)
         else:
             return {
                 "type": 4,
