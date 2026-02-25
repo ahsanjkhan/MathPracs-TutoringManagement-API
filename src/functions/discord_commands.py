@@ -131,8 +131,8 @@ def handle_ping_bot(interaction: dict) -> dict:
     }
 
 
-def handle_sessions(interaction: dict, application_id: str) -> dict:
-    """Handle /sessions command - returns deferred, processes async."""
+def handle_sessions(interaction: dict, application_id: str) -> None:
+    """Handle /sessions command - runs as background task, sends follow-up."""
     channel_id = interaction.get("channel_id")
     interaction_token = interaction.get("token")
     user_id = interaction.get("member", {}).get("user", {}).get("id")
@@ -141,10 +141,8 @@ def handle_sessions(interaction: dict, application_id: str) -> dict:
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        return {
-            "type": 4,
-            "data": {"content": "This channel is not linked to a tutor.", "flags": 64}
-        }
+        send_followup(application_id, interaction_token, "This channel is not linked to a tutor.")
+        return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
     tutor_tz = ZoneInfo(tutor.tutor_timezone)
@@ -176,21 +174,19 @@ def handle_sessions(interaction: dict, application_id: str) -> dict:
         lines.append(f"\n_Last sync: {sync_ago}_")
         content = "\n".join(lines)
 
-    return {
-        "type": 4,
-        "data": {"content": content, "flags": 64}
-    }
+    send_followup(application_id, interaction_token, content)
 
 
-def handle_earnings(interaction: dict, application_id: str) -> dict:
-    """Handle /earnings command - shows tutor earnings for the current month."""
+def handle_earnings(interaction: dict, application_id: str) -> None:
+    """Handle /earnings command - runs as background task, sends follow-up."""
     channel_id = interaction.get("channel_id")
     token = interaction.get("token")
 
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        return {"type": 4, "data": {"content": "This channel is not linked to a tutor.", "flags": 64}}
+        send_followup(application_id, token, "This channel is not linked to a tutor.")
+        return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
     hourly_rate = tutor.hourly_rate or 0
@@ -229,29 +225,30 @@ def handle_earnings(interaction: dict, application_id: str) -> dict:
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
     send_followup(application_id, token, content)
-    return {"type": 5, "data": {"flags": 64}}
 
 
-def handle_links_student(interaction: dict, application_id: str) -> dict:
-    """Handle /links_student command - tutor only. Returns meeting, upload and file request links for a student."""
+def handle_links_student(interaction: dict, application_id: str) -> None:
+    """Handle /links_student command - runs as background task, sends follow-up."""
     channel_id = interaction.get("channel_id")
     token = interaction.get("token")
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        return {"type": 4, "data": {"content": "This command can only be used in a tutor channel.", "flags": 64}}
+        send_followup(application_id, token, "This command can only be used in a tutor channel.")
+        return
 
     options = interaction.get("data", {}).get("options", [])
     student_name = next((o["value"] for o in options if o["name"] == "name"), None)
 
     if not student_name:
-        return {"type": 4, "data": {"content": "Please provide a student name.", "flags": 64}}
+        send_followup(application_id, token, "Please provide a student name.")
+        return
 
     student = student_functions.get_student(student_name)
 
     if not student:
         send_followup(application_id, token, f"No student found with name **{student_name}**.")
-        return {"type": 5, "data": {"flags": 64}}
+        return
 
     meets = student.google_meets_link
     upload = student.hw_upload_link
@@ -263,11 +260,10 @@ def handle_links_student(interaction: dict, application_id: str) -> dict:
     lines.append(f"📤 **Upload Link:** {f'<{request}>' if request else '_Not set_'}")
 
     send_followup(application_id, token, "\n".join(lines))
-    return {"type": 5, "data": {"flags": 64}}
 
 
-def handle_total_earnings(interaction: dict, application_id: str) -> dict:
-    """Handle /tutor_monthly_payments command - shows total earnings across all tutors for current month."""
+def handle_total_earnings(interaction: dict, application_id: str) -> None:
+    """Handle /tutor_monthly_payments command - runs as background task, sends follow-up."""
     central_tz = timezone(timedelta(hours=-6))
     now_central = datetime.now(central_tz)
     year = now_central.year
@@ -321,7 +317,6 @@ def handle_total_earnings(interaction: dict, application_id: str) -> dict:
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
     send_followup(application_id, interaction.get("token"), content)
-    return {"type": 5, "data": {"flags": 64}}
 
 
 def handle_refresh_commands(interaction: dict) -> dict:
