@@ -24,6 +24,7 @@ from src.functions import (
 from src.functions.google_docs import extract_student_name
 from src.models.tutor_model import TutorStatus, TutorUpdate
 from src.models.student_model import StudentUpdate, PaymentCollector
+from src.models.session_model import SessionStatus
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -181,59 +182,41 @@ def handle_sessions(interaction: dict, application_id: str) -> dict:
     }
 
 
-def handle_earnings(interaction: dict) -> dict:
+def handle_earnings(interaction: dict, application_id: str) -> dict:
     """Handle /earnings command - shows tutor earnings for the current month."""
     channel_id = interaction.get("channel_id")
-    user_id = interaction.get("member", {}).get("user", {}).get("id")
+    token = interaction.get("token")
 
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        return {
-            "type": 4,
-            "data": {"content": "This channel is not linked to a tutor.", "flags": 64}
-        }
+        return {"type": 4, "data": {"content": "This channel is not linked to a tutor.", "flags": 64}}
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
     hourly_rate = tutor.hourly_rate or 0
 
-    # Central Time offset (CST = UTC-6, CDT = UTC-5)
-    # For simplicity, using UTC-6 (CST) - covers most of the year accurately
     central_tz = timezone(timedelta(hours=-6))
-
-    # Get current date in Central Time
     now_central = datetime.now(central_tz)
     year = now_central.year
     month = now_central.month
 
-    # First day of current month at midnight Central Time
     month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=central_tz)
-
-    # Last day of current month at 23:59:59 Central Time
     last_day = calendar.monthrange(year, month)[1]
     month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
 
-    # Get all sessions for this tutor
     all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
 
-    # Filter completed sessions within the current month
     completed_sessions = []
     for s in all_sessions:
         if s.status.value != "completed":
             continue
         session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
-        # Convert to Central Time for comparison
-        session_central = session_start.astimezone(central_tz)
-        if month_start <= session_central <= month_end:
+        if month_start <= session_start.astimezone(central_tz) <= month_end:
             completed_sessions.append(s)
 
     session_count = len(completed_sessions)
-    total_hours = sum(
-        (s.end - s.start).total_seconds() / 3600
-        for s in completed_sessions
-    )
+    total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed_sessions)
     total_earnings = total_hours * hourly_rate
-
     month_name = now_central.strftime("%B %Y")
 
     content = f"""**Earnings Report for {tutor_name}**
@@ -245,17 +228,46 @@ def handle_earnings(interaction: dict) -> dict:
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
-    return {
-        "type": 4,
-        "data": {"content": content, "flags": 64}
-    }
+    send_followup(application_id, token, content)
+    return {"type": 5, "data": {"flags": 64}}
 
 
-def handle_total_earnings(interaction: dict) -> dict:
-    """Handle /total_earnings command - admin only. Shows total earnings across all tutors for current month."""
-    if not has_role(interaction.get("member", {}).get("roles", []), ROLE_ADMIN):
-        return {"type": 4, "data": {"content": "You don't have permission to use this command.", "flags": 64}}
+def handle_links_student(interaction: dict, application_id: str) -> dict:
+    """Handle /links_student command - tutor only. Returns meeting, upload and file request links for a student."""
+    channel_id = interaction.get("channel_id")
+    token = interaction.get("token")
+    tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
+    if not tutor:
+        return {"type": 4, "data": {"content": "This command can only be used in a tutor channel.", "flags": 64}}
+
+    options = interaction.get("data", {}).get("options", [])
+    student_name = next((o["value"] for o in options if o["name"] == "name"), None)
+
+    if not student_name:
+        return {"type": 4, "data": {"content": "Please provide a student name.", "flags": 64}}
+
+    student = student_functions.get_student(student_name)
+
+    if not student:
+        send_followup(application_id, token, f"No student found with name **{student_name}**.")
+        return {"type": 5, "data": {"flags": 64}}
+
+    meets = student.google_meets_link
+    upload = student.hw_upload_link
+    request = student.file_request_link
+
+    lines = [f"**Links for {student.student_name}**\n"]
+    lines.append(f"📹 **Google Meet:** {f'<{meets}>' if meets else '_Not set_'}")
+    lines.append(f"📁 **HW Folder:** {f'<{upload}>' if upload else '_Not set_'}")
+    lines.append(f"📤 **Upload Link:** {f'<{request}>' if request else '_Not set_'}")
+
+    send_followup(application_id, token, "\n".join(lines))
+    return {"type": 5, "data": {"flags": 64}}
+
+
+def handle_total_earnings(interaction: dict, application_id: str) -> dict:
+    """Handle /tutor_monthly_payments command - shows total earnings across all tutors for current month."""
     central_tz = timezone(timedelta(hours=-6))
     now_central = datetime.now(central_tz)
     year = now_central.year
@@ -266,25 +278,27 @@ def handle_total_earnings(interaction: dict) -> dict:
     month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
 
     tutors = tutor_functions.get_all_tutors(status_filter=TutorStatus.ACTIVE)
+    tutor_map = {t.tutor_id: t for t in tutors}
+
+    # Single DynamoDB scan instead of one query per tutor
+    all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
+
+    # Group completed sessions by tutor for current month
+    sessions_by_tutor: dict = {}
+    for s in all_sessions:
+        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        if month_start <= session_start.astimezone(central_tz) <= month_end:
+            sessions_by_tutor.setdefault(s.tutor_id, []).append(s)
 
     grand_total = 0.0
     lines = []
 
-    for tutor in tutors:
-        hourly_rate = tutor.hourly_rate or 0
-        all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
-
-        completed = []
-        for s in all_sessions:
-            if s.status.value != "completed":
-                continue
-            session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
-            if month_start <= session_start.astimezone(central_tz) <= month_end:
-                completed.append(s)
-
-        if not completed:
+    for tutor_id, completed in sessions_by_tutor.items():
+        tutor = tutor_map.get(tutor_id)
+        if not tutor:
             continue
 
+        hourly_rate = tutor.hourly_rate or 0
         total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed)
         earnings = total_hours * hourly_rate
         grand_total += earnings
@@ -306,7 +320,8 @@ def handle_total_earnings(interaction: dict) -> dict:
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
-    return {"type": 4, "data": {"content": content, "flags": 64}}
+    send_followup(application_id, interaction.get("token"), content)
+    return {"type": 5, "data": {"flags": 64}}
 
 
 def handle_refresh_commands(interaction: dict) -> dict:

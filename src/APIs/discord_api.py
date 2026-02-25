@@ -85,7 +85,7 @@ async def discord_interactions(request: Request):
         elif command_name == "sessions":
             return discord_commands.handle_sessions(interaction, application_id)
         elif command_name == "earnings":
-            return discord_commands.handle_earnings(interaction)
+            return discord_commands.handle_earnings(interaction, application_id)
         elif command_name == "refresh_commands":
             return discord_commands.handle_refresh_commands(interaction)
         elif command_name == "manual_sync":
@@ -100,8 +100,10 @@ async def discord_interactions(request: Request):
             return discord_commands.handle_update_tutor(interaction)
         elif command_name == "update_student":
             return discord_commands.handle_update_student(interaction)
-        elif command_name == "earnings_mathpracs":
-            return discord_commands.handle_total_earnings(interaction)
+        elif command_name == "tutor_monthly_payments":
+            return discord_commands.handle_total_earnings(interaction, application_id)
+        elif command_name == "links_student":
+            return discord_commands.handle_links_student(interaction, application_id)
         else:
             return {
                 "type": 4,
