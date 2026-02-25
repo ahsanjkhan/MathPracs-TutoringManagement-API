@@ -5,6 +5,7 @@ These replace the discord.py bot commands.
 import calendar
 import json
 import logging
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -83,17 +84,25 @@ def get_last_sync_ago() -> str:
         return "unknown"
 
 
-def send_followup(application_id: str, interaction_token: str, content: str, ephemeral: bool = True) -> bool:
-    """Send a follow-up message after a deferred response."""
-    creds = discord_utils.get_discord_credentials()
-
-    flags = 64 if ephemeral else 0  # 64 = EPHEMERAL flag
-
+def send_followup(
+    application_id: str,
+    interaction_token: str,
+    content: str = None,
+    embed: dict = None,
+    ephemeral: bool = True,
+) -> bool:
+    """Send a follow-up message after a deferred response. Pass content, embed, or both."""
+    flags = 64 if ephemeral else 0
+    payload: dict = {"flags": flags}
+    if content:
+        payload["content"] = content
+    if embed:
+        payload["embeds"] = [embed]
     try:
         response = httpx.post(
             f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}",
-            json={"content": content, "flags": flags},
-            timeout=30.0
+            json=payload,
+            timeout=30.0,
         )
         return response.status_code in (200, 204)
     except Exception as e:
@@ -132,16 +141,15 @@ def handle_ping_bot(interaction: dict) -> dict:
 
 
 def handle_sessions(interaction: dict, application_id: str) -> None:
-    """Handle /sessions command - runs as background task, sends follow-up."""
+    """Handle /sessions command — called as a deferred background task."""
     channel_id = interaction.get("channel_id")
     interaction_token = interaction.get("token")
     user_id = interaction.get("member", {}).get("user", {}).get("id")
 
-    # Process in "background" (sync for now, but fast enough)
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        send_followup(application_id, interaction_token, "This channel is not linked to a tutor.")
+        send_followup(application_id, interaction_token, content="This channel is not linked to a tutor.")
         return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
@@ -174,18 +182,18 @@ def handle_sessions(interaction: dict, application_id: str) -> None:
         lines.append(f"\n_Last sync: {sync_ago}_")
         content = "\n".join(lines)
 
-    send_followup(application_id, interaction_token, content)
+    send_followup(application_id, interaction_token, content=content)
 
 
 def handle_earnings(interaction: dict, application_id: str) -> None:
-    """Handle /earnings command - runs as background task, sends follow-up."""
+    """Handle /earnings command — called as a deferred background task."""
     channel_id = interaction.get("channel_id")
     token = interaction.get("token")
 
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        send_followup(application_id, token, "This channel is not linked to a tutor.")
+        send_followup(application_id, token, content="This channel is not linked to a tutor.")
         return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
@@ -224,30 +232,30 @@ def handle_earnings(interaction: dict, application_id: str) -> None:
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
-    send_followup(application_id, token, content)
+    send_followup(application_id, token, content=content)
 
 
 def handle_links_student(interaction: dict, application_id: str) -> None:
-    """Handle /links_student command - runs as background task, sends follow-up."""
+    """Handle /links_student command — called as a deferred background task."""
     channel_id = interaction.get("channel_id")
     token = interaction.get("token")
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        send_followup(application_id, token, "This command can only be used in a tutor channel.")
+        send_followup(application_id, token, content="This command can only be used in a tutor channel.")
         return
 
     options = interaction.get("data", {}).get("options", [])
     student_name = next((o["value"] for o in options if o["name"] == "name"), None)
 
     if not student_name:
-        send_followup(application_id, token, "Please provide a student name.")
+        send_followup(application_id, token, content="Please provide a student name.")
         return
 
     student = student_functions.get_student(student_name)
 
     if not student:
-        send_followup(application_id, token, f"No student found with name **{student_name}**.")
+        send_followup(application_id, token, content=f"No student found with name **{student_name}**.")
         return
 
     meets = student.google_meets_link
@@ -259,11 +267,11 @@ def handle_links_student(interaction: dict, application_id: str) -> None:
     lines.append(f"📁 **HW Folder:** {f'<{upload}>' if upload else '_Not set_'}")
     lines.append(f"📤 **Upload Link:** {f'<{request}>' if request else '_Not set_'}")
 
-    send_followup(application_id, token, "\n".join(lines))
+    send_followup(application_id, token, content="\n".join(lines))
 
 
 def handle_total_earnings(interaction: dict, application_id: str) -> None:
-    """Handle /tutor_monthly_payments command - runs as background task, sends follow-up."""
+    """Handle /tutor_monthly_payments command — called as a deferred background task."""
     central_tz = timezone(timedelta(hours=-6))
     now_central = datetime.now(central_tz)
     year = now_central.year
@@ -316,7 +324,114 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
-    send_followup(application_id, interaction.get("token"), content)
+    send_followup(application_id, interaction.get("token"), content=content)
+
+
+def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
+    """Handle /hours_tutored_chart command — called as a deferred background task."""
+    central_tz = timezone(timedelta(hours=-6))
+    now_central = datetime.now(central_tz)
+    current_year = now_central.year
+    current_month = now_central.month
+
+    # Jan 2026 → current month
+    CHART_START_YEAR = 2026
+    CHART_START_MONTH = 1
+
+    month_keys = []
+    labels = []
+    for m in range(CHART_START_MONTH, current_month + 1):
+        month_keys.append((CHART_START_YEAR, m))
+        labels.append(datetime(CHART_START_YEAR, m, 1).strftime("%b %Y"))
+
+    all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
+
+    hours_by_month: dict = {key: 0.0 for key in month_keys}
+    for s in all_sessions:
+        session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        local_start = session_start.astimezone(central_tz)
+        key = (local_start.year, local_start.month)
+        if key in hours_by_month:
+            hours_by_month[key] += (s.end - s.start).total_seconds() / 3600
+
+    data = [round(hours_by_month[key], 1) for key in month_keys]
+    total_hours = sum(data)
+
+    chart_config = {
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": "Hours Tutored",
+                "data": data,
+                "backgroundColor": "rgba(99, 102, 241, 0.8)",
+                "borderColor": "rgba(99, 102, 241, 1)",
+                "borderWidth": 1,
+            }],
+        },
+        "options": {
+            "plugins": {
+                "title": {"display": True, "text": "Total Hours Tutored per Month"},
+                "legend": {"display": False},
+            },
+            "scales": {
+                "y": {
+                    "beginAtZero": True,
+                    "title": {"display": True, "text": "Hours"},
+                }
+            },
+        },
+    }
+
+    chart_url = (
+        "https://quickchart.io/chart"
+        f"?c={urllib.parse.quote(json.dumps(chart_config))}"
+        "&width=600&height=400&backgroundColor=white"
+    )
+
+    send_followup(
+        application_id,
+        interaction.get("token"),
+        embed={
+            "title": "Hours Tutored per Month (2026)",
+            "description": f"Total hours so far: **{total_hours:.1f}h**",
+            "image": {"url": chart_url},
+            "color": 6366241,
+        },
+    )
+
+
+def handle_help(interaction: dict) -> dict:
+    """Handle /help command — lists all commands grouped by role."""
+    tutor_commands = [
+        ("sessions",         "View your scheduled sessions for the next 24 hours"),
+        ("earnings",         "View your earnings for the current month"),
+        ("links_student",    "Get meeting, upload, and file request links for a student"),
+        ("refresh_commands", "Update your pinned commands message"),
+    ]
+    admin_commands = [
+        ("ping_bot",               "Test if the bot is connected"),
+        ("active_tutors",          "List all active tutors"),
+        ("get_tutor",              "Get details for a tutor"),
+        ("get_student",            "Get details for a student"),
+        ("update_tutor",           "Update tutor details"),
+        ("update_student",         "Update student details"),
+        ("manual_sync",            "Manually trigger a calendar sync"),
+        ("tutor_monthly_payments", "View total earnings across all tutors for the current month"),
+        ("hours_tutored_chart",    "Bar chart of total hours tutored per month"),
+        ("help",                   "Show all commands and descriptions"),
+    ]
+
+    tutor_lines  = "\n".join(f"`/{cmd}` — {desc}" for cmd, desc in tutor_commands)
+    admin_lines  = "\n".join(f"`/{cmd}` — {desc}" for cmd, desc in admin_commands)
+
+    content = (
+        "**MathPracs Bot — All Commands**\n\n"
+        f"**👤 Tutor Commands**\n{tutor_lines}\n\n"
+        f"**🔧 Admin Commands**\n{admin_lines}"
+    )
+
+    return {"type": 4, "data": {"content": content, "flags": 64}}
 
 
 def handle_refresh_commands(interaction: dict) -> dict:

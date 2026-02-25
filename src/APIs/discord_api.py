@@ -3,7 +3,7 @@ Discord Interactions endpoint for serverless slash commands.
 Handles signature verification and routes interactions to handlers.
 """
 import logging
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
@@ -38,7 +38,7 @@ DEFERRED = {"type": 5, "data": {"flags": 64}}
 
 
 @router.post("/interactions")
-async def discord_interactions(request: Request, background_tasks: BackgroundTasks):
+async def discord_interactions(request: Request):
     """
     Handle all Discord interactions (slash commands, buttons, modals).
     Discord sends POST requests here when users interact with the bot.
@@ -83,13 +83,15 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
         command_name = interaction.get("data", {}).get("name")
         logger.info(f"Slash command: {command_name}")
 
-        if command_name == "ping_bot":
+        if command_name == "help":
+            return discord_commands.handle_help(interaction)
+        elif command_name == "ping_bot":
             return discord_commands.handle_ping_bot(interaction)
         elif command_name == "sessions":
-            background_tasks.add_task(discord_commands.handle_sessions, interaction, application_id)
+            discord_utils.invoke_discord_task("sessions", interaction, application_id)
             return DEFERRED
         elif command_name == "earnings":
-            background_tasks.add_task(discord_commands.handle_earnings, interaction, application_id)
+            discord_utils.invoke_discord_task("earnings", interaction, application_id)
             return DEFERRED
         elif command_name == "refresh_commands":
             return discord_commands.handle_refresh_commands(interaction)
@@ -106,10 +108,13 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
         elif command_name == "update_student":
             return discord_commands.handle_update_student(interaction)
         elif command_name == "tutor_monthly_payments":
-            background_tasks.add_task(discord_commands.handle_total_earnings, interaction, application_id)
+            discord_utils.invoke_discord_task("tutor_monthly_payments", interaction, application_id)
             return DEFERRED
         elif command_name == "links_student":
-            background_tasks.add_task(discord_commands.handle_links_student, interaction, application_id)
+            discord_utils.invoke_discord_task("links_student", interaction, application_id)
+            return DEFERRED
+        elif command_name == "hours_tutored_chart":
+            discord_utils.invoke_discord_task("hours_tutored_chart", interaction, application_id)
             return DEFERRED
         else:
             return {

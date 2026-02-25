@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from mangum import Mangum
 from src.APIs import tutors_api, sessions_api, sync_api, students_api, discord_api, dropbox_webhook_api
 from src.auth import get_current_user, get_auth_config
-from src.functions import sync_functions
+from src.functions import sync_functions, discord_commands
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,9 +18,32 @@ logging.getLogger("dropbox").setLevel(logging.WARNING)
 logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.WARNING)
 
 
+_DISCORD_TASK_HANDLERS = {
+    "sessions":             discord_commands.handle_sessions,
+    "earnings":             discord_commands.handle_earnings,
+    "links_student":        discord_commands.handle_links_student,
+    "tutor_monthly_payments": discord_commands.handle_total_earnings,
+    "hours_tutored_chart":  discord_commands.handle_hours_tutored_chart,
+}
+
+
 def lambda_handler(event, context):
-    """Handle both API Gateway and EventBridge events."""
-    # Check if this is an EventBridge event
+    """Handle API Gateway, EventBridge, and async Discord task events."""
+    # Async Discord task (fire-and-forget from the interactions handler)
+    if "discord_task" in event:
+        task = event["discord_task"]
+        command = task.get("command")
+        handler_fn = _DISCORD_TASK_HANDLERS.get(command)
+        if handler_fn:
+            try:
+                handler_fn(task["interaction"], task["application_id"])
+            except Exception as e:
+                logger.error(f"Discord task failed for '{command}': {e}")
+        else:
+            logger.warning(f"Unknown discord_task command: {command}")
+        return {"statusCode": 200}
+
+    # EventBridge scheduled sync
     if event.get('source') == 'aws.events' or 'detail-type' in event:
         logger.info("EventBridge sync triggered")
         try:

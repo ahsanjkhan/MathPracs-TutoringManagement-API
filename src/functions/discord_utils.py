@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import boto3
 import httpx
@@ -19,6 +20,32 @@ def get_discord_credentials() -> dict:
         response = secrets_client.get_secret_value(SecretId=settings.discord_credentials_secret_name)
         _discord_credentials = json.loads(response["SecretString"])
     return _discord_credentials
+
+
+def invoke_discord_task(command: str, interaction: dict, application_id: str) -> None:
+    """
+    Asynchronously invoke this same Lambda to process a slow Discord command.
+    The caller returns DEFERRED (type 5) immediately; the second invocation
+    does the real work and calls send_followup.
+    """
+    function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+    if not function_name:
+        logger.error("AWS_LAMBDA_FUNCTION_NAME not set — cannot defer Discord task")
+        return
+    try:
+        boto3.client("lambda", region_name=settings.aws_region).invoke(
+            FunctionName=function_name,
+            InvocationType="Event",  # fire-and-forget
+            Payload=json.dumps({
+                "discord_task": {
+                    "command": command,
+                    "interaction": interaction,
+                    "application_id": application_id,
+                }
+            }).encode(),
+        )
+    except Exception as e:
+        logger.error(f"Failed to invoke async Discord task for '{command}': {e}")
 
 
 def create_tutor_channel(tutor_name: str) -> str | None:
@@ -169,8 +196,8 @@ def get_onboarding_message_content(tutor_name: str) -> str:
     TUTOR_COMMANDS = {
         "sessions": "View your scheduled sessions for the next 24 hours",
         "earnings": "View your earnings for the current month",
+        "links_student": "Get meeting, upload, and file request links for a student",
         "refresh_commands": "Update the pinned message with latest commands",
-        "ping_bot": "Test if the bot is connected",
     }
 
     first_name = tutor_name.split()[0] if tutor_name else "Tutor"

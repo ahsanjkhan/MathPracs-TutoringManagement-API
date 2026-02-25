@@ -33,7 +33,7 @@ def generate_feedback_summary(raw_feedback: str, student_name: str) -> str | Non
         return None
 
     prompt = f"""Convert this tutoring session note into a professional 2-3 sentence summary for parents.
-Keep it positive, constructive, and focus on what the student worked on and their progress.
+Keep it positive, constructive, and focus on what the student worked on and their progress but also make it less robotic and more human-friendly.
 Student name: {student_name}
 
 Tutor's note: "{raw_feedback}"
