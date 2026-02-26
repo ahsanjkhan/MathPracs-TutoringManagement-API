@@ -394,7 +394,10 @@ def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
         interaction.get("token"),
         embed={
             "title": "Hours Tutored per Month (2026)",
-            "description": f"Total hours so far: **{total_hours:.1f}h**",
+            "description": (
+                "\n".join(f"**{label}:** {hours}h" for label, hours in zip(labels, data))
+                + f"\n\n**Total hours so far: {total_hours:.1f}h**"
+            ),
             "image": {"url": chart_url},
             "color": 6366241,
         },
