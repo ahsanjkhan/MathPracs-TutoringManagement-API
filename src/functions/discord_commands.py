@@ -5,6 +5,7 @@ These replace the discord.py bot commands.
 import calendar
 import json
 import logging
+import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -295,6 +296,8 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
             sessions_by_tutor.setdefault(s.tutor_id, []).append(s)
 
     grand_total = 0.0
+    total_demos = 0
+    total_no_shows = 0
     lines = []
 
     for tutor_id, completed in sessions_by_tutor.items():
@@ -302,13 +305,23 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
         if not tutor:
             continue
 
+        demo_count    = sum(1 for s in completed if re.search(r"demo", s.summary, re.IGNORECASE))
+        no_show_count = sum(1 for s in completed if re.search(r"\(no-show\)", s.summary, re.IGNORECASE))
+        total_demos    += demo_count
+        total_no_shows += no_show_count
+
         hourly_rate = tutor.hourly_rate or 0
         total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed)
         earnings = total_hours * hourly_rate
         grand_total += earnings
 
         tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-        lines.append(f"• **{tutor_name}** — {total_hours:.1f}h × ${hourly_rate:.2f} = **${earnings:.2f}**")
+        line = f"• **{tutor_name}** — {total_hours:.1f}h × ${hourly_rate:.2f} = **${earnings:.2f}**"
+        if demo_count:
+            line += f"\n  Demo: {demo_count} session{'s' if demo_count != 1 else ''}"
+        if no_show_count:
+            line += f"\n  No show: {no_show_count} session{'s' if no_show_count != 1 else ''}"
+        lines.append(line)
 
     month_name = now_central.strftime("%B %Y")
 
@@ -321,6 +334,8 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
 {breakdown}
 
 **Grand Total: ${grand_total:.2f}**
+Demo sessions: {total_demos}
+No show sessions: {total_no_shows}
 
 _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"""
 
