@@ -318,9 +318,9 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
         tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
         line = f"• **{tutor_name}** — {total_hours:.1f}h × ${hourly_rate:.2f} = **${earnings:.2f}**"
         if demo_count:
-            line += f"\n  Demo: {demo_count} session{'s' if demo_count != 1 else ''}"
+            line += f"\n  **Demo:** {demo_count} session{'s' if demo_count != 1 else ''}"
         if no_show_count:
-            line += f"\n  No show: {no_show_count} session{'s' if no_show_count != 1 else ''}"
+            line += f"\n  **No show:** {no_show_count} session{'s' if no_show_count != 1 else ''}"
         lines.append(line)
 
     month_name = now_central.strftime("%B %Y")
@@ -328,7 +328,7 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
     if not lines:
         content = f"No completed sessions found for {month_name}."
     else:
-        breakdown = "\n".join(lines)
+        breakdown = "\n\n".join(lines)
         content = f"""**Total Earnings Report — {month_name}**
 
 {breakdown}

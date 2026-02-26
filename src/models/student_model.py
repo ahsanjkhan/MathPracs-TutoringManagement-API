@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class PaymentCollector(str, Enum):
     MUAZ = "muaz"
     AHSAN = "ahsan"
-    STRIPE = "stripe"
+    BUSINESS = "business"
 
 
 class PhoneNumber(BaseModel):
