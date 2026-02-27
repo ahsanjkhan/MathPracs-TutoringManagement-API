@@ -23,10 +23,10 @@ def get_docs_service():
 
 
 def extract_student_name(summary: str) -> Optional[str]:
-    """Extract student name from session summary. E.g., 'Ved Tutoring' -> 'Ved'. Returns title case."""
+    """Extract student name from session summary. E.g., 'Isaac SAT Tutoring' -> 'Isaac SAT'."""
     match = re.match(r"^(.+?)\s+[Tt]utoring", summary)
     if match:
-        return match.group(1).strip().title()
+        return match.group(1).strip()
     return None
 
 
