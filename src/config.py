@@ -9,10 +9,13 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
 
     # DynamoDB Tables
-    tutors_table: str = "Tutors"
+    tutors_table: str = "TutorsV2"
+    tutors_metadata_table: str = "TutorsMetadataV2"
     sessions_table: str = "Sessions"
     calendar_sync_table: str = "CalendarListState"
-    students_table: str = "Students"
+    students_table: str = "StudentsV2"
+    students_metadata_table: str = "StudentsMetadataV2"
+    transactions_table: str = "Transactions"
 
     # Secrets Manager
     google_credentials_secret_name: str = "tutoring-api/google-credentials-cdk"
