@@ -1,5 +1,5 @@
 import logging
-from src.functions import dropbox, discord_utils, student_functions, tutor_functions
+from src.functions import dropbox, discord_utils, tutor_functions, session_functions
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +47,13 @@ def process_dropbox_webhook() -> dict:
             logger.warning(f"Could not extract student name from: {file_info.get('path')}")
             continue
 
-        # Look up student to get tutor_id
-        student = student_functions.get_student(student_name)
-        if not student:
-            logger.warning(f"Student not found in database: {student_name}")
+        # Find the tutor via the most recent completed session for this student
+        tutor_id = session_functions.get_most_recent_tutor_id_for_student(student_name)
+        if not tutor_id:
+            logger.warning(f"No sessions found for student: {student_name}")
             continue
 
-        # Look up tutor to get discord_channel_id
-        tutor = tutor_functions.get_tutor(student.tutor_id)
+        tutor = tutor_functions.get_tutor(tutor_id)
         if not tutor:
             logger.warning(f"Tutor not found for student: {student_name}")
             continue

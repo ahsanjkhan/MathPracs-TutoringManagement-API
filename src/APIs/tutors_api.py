@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from src.models.tutor_model import TutorStatus, TutorUpdate, TutorResponse
+from pydantic import BaseModel
+from src.models.tutor_v2_model import TutorV2, TutorStatus, TutorV2Update, TutorMetadataV2Update
 from src.functions import tutor_functions
 import logging
 
@@ -8,51 +9,71 @@ router = APIRouter(prefix="/tutors", tags=["Tutors"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("", response_model=list[TutorResponse])
+class TutorPatchRequest(BaseModel):
+    """Combined patch body — fields are routed to TutorsV2 or TutorsMetadataV2 as appropriate."""
+    display_name: Optional[str] = None
+    status: Optional[TutorStatus] = None
+    hourly_rate: Optional[float] = None
+    tutor_email: Optional[str] = None
+    tutor_phone: Optional[str] = None
+    tutor_timezone: Optional[str] = None
+
+
+@router.get("", response_model=list[TutorV2])
 def get_tutors(status: Optional[TutorStatus] = None):
-    """Route to get all tutors"""
+    """Get all tutors."""
     tutors = tutor_functions.get_all_tutors(status_filter=status)
     logger.info(f"Retrieved {len(tutors)} tutors.")
-    return [TutorResponse(**t.model_dump()) for t in tutors]
+    return tutors
 
 
-@router.get("/{tutor}", response_model=TutorResponse)
+@router.get("/{tutor}", response_model=TutorV2)
 def get_tutor_by_id(tutor: str):
-    """Route to get tutor info by tutor_id or name (e.g., 'mustafa')."""
+    """Get tutor by tutor_id or name (e.g. 'mustafa')."""
     found = tutor_functions.resolve_tutor(tutor)
-    if found:
-        logger.info(f"Tutor: {tutor} information was retrieved.")
-    else:
-        logger.error(f"Tutor: {tutor} information could not be retrieved.")
+    if not found:
+        logger.error(f"Tutor: {tutor} not found.")
         raise HTTPException(status_code=404, detail="Tutor not found")
-    return TutorResponse(**found.model_dump())
+    logger.info(f"Retrieved tutor: {tutor}.")
+    return found
 
 
-@router.patch("/{tutor}", response_model=TutorResponse)
-def patch_tutor(tutor: str, updates: TutorUpdate):
-    """Route to patch tutor record by tutor_id or name."""
+@router.patch("/{tutor}", response_model=TutorV2)
+def patch_tutor(tutor: str, updates: TutorPatchRequest):
+    """Patch tutor by tutor_id or name. Operational fields go to TutorsV2, metadata fields to TutorsMetadataV2."""
     found = tutor_functions.resolve_tutor(tutor)
     if not found:
         raise HTTPException(status_code=404, detail="Tutor not found")
-    updated = tutor_functions.update_tutor(found.tutor_id, updates)
-    if updated:
-        logger.info(f"Tutor: {tutor} information has been patched.")
-        return TutorResponse(**updated.model_dump())
-    else:
-        logger.error(f"Tutor: {tutor} information could not be patched.")
-        raise HTTPException(status_code=500, detail="Failed to patch tutor")
+
+    tutor_functions.update_tutor(
+        found.tutor_id,
+        TutorV2Update(display_name=updates.display_name, status=updates.status),
+    )
+    tutor_functions.update_tutor_metadata(
+        found.tutor_id,
+        TutorMetadataV2Update(
+            hourly_rate=updates.hourly_rate,
+            tutor_email=updates.tutor_email,
+            tutor_phone=updates.tutor_phone,
+            tutor_timezone=updates.tutor_timezone,
+        ),
+    )
+
+    result = tutor_functions.get_tutor(found.tutor_id)
+    if result:
+        logger.info(f"Tutor: {tutor} patched.")
+        return result
+    raise HTTPException(status_code=500, detail="Failed to patch tutor")
 
 
 @router.delete("/{tutor}")
 def delete_tutor(tutor: str):
-    """Route to make tutor inactive by tutor_id or name."""
+    """Deactivate tutor by tutor_id or name."""
     found = tutor_functions.resolve_tutor(tutor)
     if not found:
         raise HTTPException(status_code=404, detail="Tutor not found")
     deleted = tutor_functions.delete_tutor(found.tutor_id)
     if deleted:
-        logger.info(f"Tutor: {tutor} has been made inactive.")
+        logger.info(f"Tutor: {tutor} deactivated.")
         return {"message": "Tutor deactivated"}
-    else:
-        logger.error(f"Tutor: {tutor} could not be made inactive after being found successfully.")
-        raise HTTPException(status_code=500, detail="Failed to deactivate tutor")
+    raise HTTPException(status_code=500, detail="Failed to deactivate tutor")

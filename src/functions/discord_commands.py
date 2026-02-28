@@ -24,8 +24,8 @@ from src.functions import (
     groq_utils,
 )
 from src.functions.google_docs import extract_student_name
-from src.models.tutor_model import TutorStatus, TutorUpdate
-from src.models.student_model import StudentUpdate, StudentPatch, PaymentCollector
+from src.models.tutor_v2_model import TutorStatus, TutorV2Update, TutorMetadataV2Update
+from src.models.student_v2_model import StudentV2Update, StudentMetadataV2Update, PaymentCollector
 from src.models.session_model import SessionStatus
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,8 @@ def handle_sessions(interaction: dict, application_id: str) -> None:
         return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-    tutor_tz = ZoneInfo(tutor.tutor_timezone)
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+    tutor_tz = ZoneInfo(tutor_meta.tutor_timezone if tutor_meta else "Asia/Karachi")
 
     all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
 
@@ -198,7 +199,8 @@ def handle_earnings(interaction: dict, application_id: str) -> None:
         return
 
     tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-    hourly_rate = tutor.hourly_rate or 0
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+    hourly_rate = (tutor_meta.hourly_rate if tutor_meta else 0) or 0
 
     central_tz = timezone(timedelta(hours=-6))
     now_central = datetime.now(central_tz)
@@ -284,6 +286,7 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
 
     tutors = tutor_functions.get_all_tutors(status_filter=TutorStatus.ACTIVE)
     tutor_map = {t.tutor_id: t for t in tutors}
+    meta_map = tutor_functions.get_all_tutors_metadata()
 
     # Single DynamoDB scan instead of one query per tutor
     all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
@@ -310,7 +313,8 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
         total_demos    += demo_count
         total_no_shows += no_show_count
 
-        hourly_rate = tutor.hourly_rate or 0
+        tutor_meta = meta_map.get(tutor_id)
+        hourly_rate = (tutor_meta.hourly_rate if tutor_meta else 0) or 0
         total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed)
         earnings = total_hours * hourly_rate
         grand_total += earnings
@@ -536,15 +540,17 @@ def handle_get_tutor(interaction: dict) -> dict:
     if not tutor:
         return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
 
+    meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+
     info = f"""**Tutor: {tutor.display_name}**
 ```
 ID:           {tutor.tutor_id}
 Calendar ID:  {tutor.calendar_id}
 Status:       {tutor.status.value}
-Hourly Rate:  ${tutor.hourly_rate}
-Timezone:     {tutor.tutor_timezone}
-Email:        {tutor.tutor_email or 'Not set'}
-Phone:        {tutor.tutor_phone or 'Not set'}
+Hourly Rate:  ${meta.hourly_rate if meta else 'Not set'}
+Timezone:     {meta.tutor_timezone if meta else 'Not set'}
+Email:        {meta.tutor_email if meta else 'Not set'}
+Phone:        {meta.tutor_phone if meta else 'Not set'}
 Discord Ch:   {tutor.discord_channel_id or 'Not set'}
 Created:      {tutor.created_at.strftime('%Y-%m-%d %H:%M')}
 Updated:      {tutor.updated_at.strftime('%Y-%m-%d %H:%M')}
@@ -569,23 +575,20 @@ def handle_get_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    payment = student.payment_collected_by.value if student.payment_collected_by else "Not set"
+    meta = student_functions.get_student_metadata(student_name)
+    payment = meta.payment_collected_by.value if meta and meta.payment_collected_by else "Not set"
+    pricing = json.dumps(meta.hourly_pricing, indent=2) if meta and meta.hourly_pricing else "Not set"
 
     info = f"""**Student: {student.student_name}**
 ```
-Email:        {student.student_email or 'Not set'}
-Timezone:     {student.student_timezone or 'Not set'}
+Timezone:     {meta.student_timezone if meta else 'Not set'}
 Doc ID:       {student.doc_id}
 Meet Link:    {student.google_meets_link or 'Not set'}
 Payment By:   {payment}
+Balance:      ${student.balance:.2f}
 
-Hourly Prices:
-  Price 1:    {student.hourly_price_1 or 'Not set'}
-  Price 2:    {student.hourly_price_2 or 'Not set'}
-  Price 3:    {student.hourly_price_3 or 'Not set'}
-  Price 4:    {student.hourly_price_4 or 'Not set'}
-  Price 5:    {student.hourly_price_5 or 'Not set'}
-  No Show:    {student.hourly_price_no_show or 'Not set'}
+Hourly Pricing:
+{pricing}
 
 Created:      {student.created_at.strftime('%Y-%m-%d %H:%M')}
 ```"""
@@ -609,13 +612,11 @@ def handle_update_tutor(interaction: dict) -> dict:
     if not tutor:
         return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
 
-    # Build current data dynamically from TutorUpdate fields
+    # Prepopulate with metadata fields only (hourly_rate, email, phone, timezone)
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
     current_data = {}
-    for field_name in TutorUpdate.model_fields:
-        value = getattr(tutor, field_name, None)
-        if hasattr(value, "value"):  # enum → string
-            value = value.value
-        current_data[field_name] = value
+    for field_name in TutorMetadataV2Update.model_fields:
+        current_data[field_name] = getattr(tutor_meta, field_name, None) if tutor_meta else None
 
     return {
         "type": 9,  # MODAL
@@ -659,14 +660,15 @@ def handle_update_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    # Build current data dynamically from StudentPatch fields
+    # Build current data from StudentV2Update fields (operational) + StudentMetadataV2Update fields (metadata)
+    student_meta = student_functions.get_student_metadata(student.student_name)
     current_data = {}
-    for field_name in StudentPatch.model_fields:
-        value = getattr(student, field_name, None)
-        if hasattr(value, "value"):  # enum → string
+    for field_name in StudentV2Update.model_fields:
+        current_data[field_name] = getattr(student, field_name, None)
+    for field_name in StudentMetadataV2Update.model_fields:
+        value = getattr(student_meta, field_name, None) if student_meta else None
+        if hasattr(value, "value"):
             value = value.value
-        elif hasattr(value, "model_dump"):  # nested Pydantic model → dict
-            value = value.model_dump()
         current_data[field_name] = value
 
     return {
@@ -722,17 +724,21 @@ def handle_tutor_modal_submit(interaction: dict) -> dict:
     try:
         data = json.loads(json_value.replace('\r', ''))
 
-        # Handle status enum conversion
-        if "status" in data and data["status"]:
-            data["status"] = TutorStatus(data["status"])
+        tutor_update = TutorV2Update(
+            display_name=data.get("display_name"),
+            status=TutorStatus(data["status"]) if data.get("status") else None,
+        )
+        meta_update = TutorMetadataV2Update(
+            hourly_rate=data.get("hourly_rate"),
+            tutor_email=data.get("tutor_email"),
+            tutor_phone=data.get("tutor_phone"),
+            tutor_timezone=data.get("tutor_timezone"),
+        )
 
-        update = TutorUpdate(**data)
-        result = tutor_functions.update_tutor(tutor_id, update)
+        tutor_functions.update_tutor(tutor_id, tutor_update)
+        tutor_functions.update_tutor_metadata(tutor_id, meta_update)
 
-        if result:
-            return {"type": 4, "data": {"content": f"Successfully updated tutor!", "flags": 64}}
-        else:
-            return {"type": 4, "data": {"content": "Failed to update tutor.", "flags": 64}}
+        return {"type": 4, "data": {"content": "Successfully updated tutor!", "flags": 64}}
 
     except json.JSONDecodeError as e:
         return {"type": 4, "data": {"content": f"Invalid JSON: {e}", "flags": 64}}
@@ -763,23 +769,24 @@ def handle_student_modal_submit(interaction: dict) -> dict:
     try:
         data = json.loads(json_value.replace('\r', ''))
 
-        # Handle payment_collected_by enum conversion
-        if "payment_collected_by" in data and data["payment_collected_by"]:
-            data["payment_collected_by"] = PaymentCollector(data["payment_collected_by"])
+        student_update = StudentV2Update(
+            doc_url=data.get("doc_url"),
+            file_request_link=data.get("file_request_link"),
+            google_meets_link=data.get("google_meets_link"),
+            hw_upload_link=data.get("hw_upload_link"),
+        )
+        meta_update = StudentMetadataV2Update(
+            hourly_pricing=data.get("hourly_pricing"),
+            phone_numbers=data.get("phone_numbers"),
+            student_timezone=data.get("student_timezone"),
+            no_show_custom_rate=data.get("no_show_custom_rate"),
+            payment_collected_by=PaymentCollector(data["payment_collected_by"]) if data.get("payment_collected_by") else None,
+        )
 
-        # Convert plain string phone numbers to PhoneNumber-compatible dicts
-        for phone_field in ("number_1", "number_2", "number_3"):
-            val = data.get(phone_field)
-            if isinstance(val, str) and val:
-                data[phone_field] = {"phone_number": val, "sms_enabled": True}
+        student_functions.update_student(student_name, student_update)
+        student_functions.update_student_metadata(student_name, meta_update)
 
-        update = StudentUpdate(**data)
-        result = student_functions.update_student(student_name, update)
-
-        if result:
-            return {"type": 4, "data": {"content": f"Successfully updated **{student_name}**!", "flags": 64}}
-        else:
-            return {"type": 4, "data": {"content": "Failed to update student.", "flags": 64}}
+        return {"type": 4, "data": {"content": f"Successfully updated **{student_name}**!", "flags": 64}}
 
     except json.JSONDecodeError as e:
         return {"type": 4, "data": {"content": f"Invalid JSON: {e}", "flags": 64}}

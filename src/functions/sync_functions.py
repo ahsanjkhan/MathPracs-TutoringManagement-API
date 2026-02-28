@@ -9,10 +9,10 @@ from src.config import get_settings
 from src.config import SESSION_CUTOFF_DATE
 from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox, ssm_utils
 from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
-from src.models.tutor_model import TutorUpdate, TutorStatus
+from src.models.tutor_v2_model import TutorV2Update, TutorStatus
 from src.models.session_model import SessionUpdate, SessionStatus
 from src.models.calendar_state_model import CalendarListState
-from src.models.student_model import Student
+from src.models.student_v2_model import StudentV2
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -56,7 +56,7 @@ def refresh_tracked_tutors() -> tuple[int, int]:
 
         new_name = cal.get("summary", t.calendar_id)
         if new_name != t.display_name:
-            tutor_functions.update_tutor(t.tutor_id, TutorUpdate(display_name=new_name))
+            tutor_functions.update_tutor(t.tutor_id, TutorV2Update(display_name=new_name))
             updated += 1
 
     return updated, deactivated
@@ -96,7 +96,7 @@ def sync_calendar_list() -> dict:
         elif existing_tutor:
             tutor_functions.update_tutor(
                 existing_tutor.tutor_id,
-                TutorUpdate(display_name=display_name),
+                TutorV2Update(display_name=display_name),
             )
             updated += 1
         else:
@@ -114,10 +114,7 @@ def sync_calendar_list() -> dict:
                 logger.info(f"Created Discord channel for tutor: {display_name}")
                 # Send onboarding message and get its ID
                 onboarding_msg_id = discord_utils.send_onboarding_message(channel_id, display_name)
-                tutor_functions.update_tutor(
-                    tutor.tutor_id,
-                    TutorUpdate(discord_channel_id=channel_id, discord_onboarding_message_id=onboarding_msg_id)
-                )
+                tutor_functions.set_tutor_discord_channel(tutor.tutor_id, channel_id, onboarding_msg_id)
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
@@ -259,7 +256,8 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                         student_name = google_docs.extract_student_name(s.summary) or "Unknown"
                         tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
                         # Format session time in tutor's timezone
-                        tutor_tz = ZoneInfo(tutor.tutor_timezone)
+                        tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+                        tutor_tz = ZoneInfo(tutor_meta.tutor_timezone if tutor_meta else "Asia/Karachi")
                         session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
                         local_time = session_start.astimezone(tutor_tz)
                         session_time = local_time.strftime("%b %d, %Y at %I:%M %p")
@@ -320,7 +318,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                     if view_link and upload_link:
                                         google_docs.write_links_to_doc(doc["id"], student_name, view_link, upload_link, meet_url)
 
-                                student = Student(
+                                student = StudentV2(
                                     student_name=student_name,
                                     doc_id=doc["id"],
                                     doc_url=doc.get("url"),

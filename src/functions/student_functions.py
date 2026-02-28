@@ -1,9 +1,9 @@
+from datetime import datetime
 from typing import Optional
-from boto3.dynamodb.conditions import Key
 from src.config import get_settings
 from src.functions import dynamodb, session_functions
 from src.functions.google_docs import extract_student_name
-from src.models.student_model import Student, StudentUpdate, StudentPatch
+from src.models.student_v2_model import StudentV2, StudentMetadataV2, StudentV2Update, StudentMetadataV2Update
 
 settings = get_settings()
 
@@ -13,13 +13,13 @@ def normalize_student_name(name: str) -> str:
     return name.strip().title()
 
 
-def get_all_students() -> list[Student]:
-    """Get all students from the database."""
+def get_all_students() -> list[StudentV2]:
+    """Get all students from StudentsV2."""
     items = dynamodb.scan_table(settings.students_table)
-    return [Student.from_dynamodb(item) for item in items]
+    return [StudentV2.from_dynamodb(item) for item in items]
 
 
-def get_students_by_tutor(tutor_id: str) -> list[Student]:
+def get_students_by_tutor(tutor_id: str) -> list[StudentV2]:
     """Get all students associated with a specific tutor via their sessions."""
     sessions = session_functions.get_sessions_by_tutor(tutor_id)
     student_names = set()
@@ -36,17 +36,26 @@ def get_students_by_tutor(tutor_id: str) -> list[Student]:
     return students
 
 
-def get_student(student_name: str) -> Optional[Student]:
+def get_student(student_name: str) -> Optional[StudentV2]:
     """Get a student by name (case-insensitive). Returns None if not found."""
     normalized_name = normalize_student_name(student_name)
     item = dynamodb.get_item(settings.students_table, {"studentName": normalized_name})
     if item:
-        return Student.from_dynamodb(item)
+        return StudentV2.from_dynamodb(item)
     return None
 
 
-def update_student(student_name: str, updates: StudentUpdate) -> Optional[Student]:
-    """Updates the student record using StudentUpdate model (all fields)."""
+def get_student_metadata(student_name: str) -> Optional[StudentMetadataV2]:
+    """Get student metadata by name. Returns None if not found."""
+    normalized_name = normalize_student_name(student_name)
+    item = dynamodb.get_item(settings.students_metadata_table, {"studentName": normalized_name})
+    if item:
+        return StudentMetadataV2.from_dynamodb(item)
+    return None
+
+
+def update_student(student_name: str, updates: StudentV2Update) -> Optional[StudentV2]:
+    """Update operational student fields in StudentsV2."""
     normalized_name = normalize_student_name(student_name)
     existing = get_student(normalized_name)
     if not existing:
@@ -55,40 +64,12 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
     update_data = {}
     if updates.doc_url is not None:
         update_data["docUrl"] = updates.doc_url
-    if updates.student_timezone is not None:
-        update_data["studentTimezone"] = updates.student_timezone
-    if updates.student_email is not None:
-        update_data["studentEmail"] = updates.student_email
+    if updates.file_request_link is not None:
+        update_data["fileRequestLink"] = updates.file_request_link
     if updates.google_meets_link is not None:
         update_data["googleMeetsLink"] = updates.google_meets_link
     if updates.hw_upload_link is not None:
         update_data["hwUploadLink"] = updates.hw_upload_link
-    if updates.file_request_link is not None:
-        update_data["fileRequestLink"] = updates.file_request_link
-    if updates.number_1 is not None:
-        update_data["number1"] = {"phoneNumber": updates.number_1.phone_number, "smsEnabled": updates.number_1.sms_enabled}
-    if updates.number_2 is not None:
-        update_data["number2"] = {"phoneNumber": updates.number_2.phone_number, "smsEnabled": updates.number_2.sms_enabled}
-    if updates.number_3 is not None:
-        update_data["number3"] = {"phoneNumber": updates.number_3.phone_number, "smsEnabled": updates.number_3.sms_enabled}
-    if updates.number_4 is not None:
-        update_data["number4"] = {"phoneNumber": updates.number_4.phone_number, "smsEnabled": updates.number_4.sms_enabled}
-    if updates.number_5 is not None:
-        update_data["number5"] = {"phoneNumber": updates.number_5.phone_number, "smsEnabled": updates.number_5.sms_enabled}
-    if updates.hourly_price_1 is not None:
-        update_data["hourlyPrice1"] = updates.hourly_price_1
-    if updates.hourly_price_2 is not None:
-        update_data["hourlyPrice2"] = updates.hourly_price_2
-    if updates.hourly_price_3 is not None:
-        update_data["hourlyPrice3"] = updates.hourly_price_3
-    if updates.hourly_price_4 is not None:
-        update_data["hourlyPrice4"] = updates.hourly_price_4
-    if updates.hourly_price_5 is not None:
-        update_data["hourlyPrice5"] = updates.hourly_price_5
-    if updates.hourly_price_no_show is not None:
-        update_data["hourlyPriceNoShow"] = updates.hourly_price_no_show
-    if updates.payment_collected_by is not None:
-        update_data["paymentCollectedBy"] = updates.payment_collected_by.value
 
     if not update_data:
         return existing
@@ -98,48 +79,35 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
         {"studentName": normalized_name},
         update_data,
     )
-    return Student.from_dynamodb(updated_item)
+    return StudentV2.from_dynamodb(updated_item)
 
 
-def patch_student(student_name: str, patch: StudentPatch) -> Optional[Student]:
-    """Patches the student record using StudentPatch model (only post-initialization fields)."""
+def update_student_metadata(student_name: str, updates: StudentMetadataV2Update) -> Optional[StudentMetadataV2]:
+    """Update student metadata fields in StudentsMetadataV2."""
     normalized_name = normalize_student_name(student_name)
     existing = get_student(normalized_name)
     if not existing:
         return None
 
     update_data = {}
-    if patch.student_timezone is not None:
-        update_data["studentTimezone"] = patch.student_timezone
-    if patch.student_email is not None:
-        update_data["studentEmail"] = patch.student_email
-    if patch.number_1 is not None:
-        update_data["number1"] = {"phoneNumber": patch.number_1.phone_number, "smsEnabled": patch.number_1.sms_enabled}
-    if patch.number_2 is not None:
-        update_data["number2"] = {"phoneNumber": patch.number_2.phone_number, "smsEnabled": patch.number_2.sms_enabled}
-    if patch.number_3 is not None:
-        update_data["number3"] = {"phoneNumber": patch.number_3.phone_number, "smsEnabled": patch.number_3.sms_enabled}
-    if patch.hourly_price_1 is not None:
-        update_data["hourlyPrice1"] = patch.hourly_price_1
-    if patch.hourly_price_2 is not None:
-        update_data["hourlyPrice2"] = patch.hourly_price_2
-    if patch.hourly_price_3 is not None:
-        update_data["hourlyPrice3"] = patch.hourly_price_3
-    if patch.hourly_price_4 is not None:
-        update_data["hourlyPrice4"] = patch.hourly_price_4
-    if patch.hourly_price_5 is not None:
-        update_data["hourlyPrice5"] = patch.hourly_price_5
-    if patch.hourly_price_no_show is not None:
-        update_data["hourlyPriceNoShow"] = patch.hourly_price_no_show
-    if patch.payment_collected_by is not None:
-        update_data["paymentCollectedBy"] = patch.payment_collected_by.value
+    if updates.hourly_pricing is not None:
+        update_data["hourlyPricing"] = updates.hourly_pricing
+    if updates.phone_numbers is not None:
+        update_data["phoneNumbers"] = updates.phone_numbers
+    if updates.student_timezone is not None:
+        update_data["studentTimezone"] = updates.student_timezone
+    if updates.no_show_custom_rate is not None:
+        update_data["noShowCustomRate"] = updates.no_show_custom_rate
+    if updates.payment_collected_by is not None:
+        update_data["paymentCollectedBy"] = updates.payment_collected_by.value
 
     if not update_data:
-        return existing
+        return get_student_metadata(normalized_name)
 
+    update_data["updatedAt"] = datetime.utcnow().isoformat()
     updated_item = dynamodb.update_item(
-        settings.students_table,
+        settings.students_metadata_table,
         {"studentName": normalized_name},
         update_data,
     )
-    return Student.from_dynamodb(updated_item)
+    return StudentMetadataV2.from_dynamodb(updated_item)
