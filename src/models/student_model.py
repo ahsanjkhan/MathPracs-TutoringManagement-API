@@ -12,7 +12,7 @@ class PaymentCollector(str, Enum):
 
 class PhoneNumber(BaseModel):
     phone_number: str
-    sms_enabled: bool = False
+    sms_enabled: bool = True
 
 
 class Student(BaseModel):
@@ -27,9 +27,8 @@ class Student(BaseModel):
     number_1: Optional[PhoneNumber] = None
     number_2: Optional[PhoneNumber] = None
     number_3: Optional[PhoneNumber] = None
-    number_4: PhoneNumber = Field(default_factory=lambda: PhoneNumber(phone_number="18325745458", sms_enabled=False))
-    number_5: PhoneNumber = Field(default_factory=lambda: PhoneNumber(phone_number="18324174712", sms_enabled=False))
-    hourly_price_standard: Optional[float] = None
+    number_4: PhoneNumber = Field(default_factory=lambda: PhoneNumber(phone_number="18325745458", sms_enabled=True))
+    number_5: PhoneNumber = Field(default_factory=lambda: PhoneNumber(phone_number="18324174712", sms_enabled=True))
     hourly_price_1: Optional[float] = None
     hourly_price_2: Optional[float] = None
     hourly_price_3: Optional[float] = None
@@ -65,8 +64,6 @@ class Student(BaseModel):
             data["number2"] = {"phoneNumber": self.number_2.phone_number, "smsEnabled": self.number_2.sms_enabled}
         if self.number_3:
             data["number3"] = {"phoneNumber": self.number_3.phone_number, "smsEnabled": self.number_3.sms_enabled}
-        if self.hourly_price_standard is not None:
-            data["hourlyPriceStandard"] = self.hourly_price_standard
         if self.hourly_price_1 is not None:
             data["hourlyPrice1"] = self.hourly_price_1
         if self.hourly_price_2 is not None:
@@ -121,7 +118,6 @@ class Student(BaseModel):
             number_3=number_3,
             number_4=number_4,
             number_5=number_5,
-            hourly_price_standard=float(item["hourlyPriceStandard"]) if item.get("hourlyPriceStandard") is not None else None,
             hourly_price_1=float(item["hourlyPrice1"]) if item.get("hourlyPrice1") is not None else None,
             hourly_price_2=float(item["hourlyPrice2"]) if item.get("hourlyPrice2") is not None else None,
             hourly_price_3=float(item["hourlyPrice3"]) if item.get("hourlyPrice3") is not None else None,
@@ -146,7 +142,6 @@ class StudentUpdate(BaseModel):
     number_3: Optional[PhoneNumber] = None
     number_4: Optional[PhoneNumber] = None
     number_5: Optional[PhoneNumber] = None
-    hourly_price_standard: Optional[float] = None
     hourly_price_1: Optional[float] = None
     hourly_price_2: Optional[float] = None
     hourly_price_3: Optional[float] = None
@@ -163,7 +158,6 @@ class StudentPatch(BaseModel):
     number_1: Optional[PhoneNumber] = None
     number_2: Optional[PhoneNumber] = None
     number_3: Optional[PhoneNumber] = None
-    hourly_price_standard: Optional[float] = None
     hourly_price_1: Optional[float] = None
     hourly_price_2: Optional[float] = None
     hourly_price_3: Optional[float] = None

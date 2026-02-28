@@ -74,8 +74,6 @@ class TutorUpdate(BaseModel):
     hourly_rate: Optional[float] = None
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
-    discord_channel_id: Optional[str] = None
-    discord_onboarding_message_id: Optional[str] = None
     tutor_timezone: Optional[str] = "Asia/Karachi"
 
 

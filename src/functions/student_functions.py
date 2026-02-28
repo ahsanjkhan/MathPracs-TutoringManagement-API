@@ -75,8 +75,6 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
         update_data["number4"] = {"phoneNumber": updates.number_4.phone_number, "smsEnabled": updates.number_4.sms_enabled}
     if updates.number_5 is not None:
         update_data["number5"] = {"phoneNumber": updates.number_5.phone_number, "smsEnabled": updates.number_5.sms_enabled}
-    if updates.hourly_price_standard is not None:
-        update_data["hourlyPriceStandard"] = updates.hourly_price_standard
     if updates.hourly_price_1 is not None:
         update_data["hourlyPrice1"] = updates.hourly_price_1
     if updates.hourly_price_2 is not None:
@@ -121,8 +119,6 @@ def patch_student(student_name: str, patch: StudentPatch) -> Optional[Student]:
         update_data["number2"] = {"phoneNumber": patch.number_2.phone_number, "smsEnabled": patch.number_2.sms_enabled}
     if patch.number_3 is not None:
         update_data["number3"] = {"phoneNumber": patch.number_3.phone_number, "smsEnabled": patch.number_3.sms_enabled}
-    if patch.hourly_price_standard is not None:
-        update_data["hourlyPriceStandard"] = patch.hourly_price_standard
     if patch.hourly_price_1 is not None:
         update_data["hourlyPrice1"] = patch.hourly_price_1
     if patch.hourly_price_2 is not None:

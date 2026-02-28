@@ -25,7 +25,7 @@ from src.functions import (
 )
 from src.functions.google_docs import extract_student_name
 from src.models.tutor_model import TutorStatus, TutorUpdate
-from src.models.student_model import StudentUpdate, PaymentCollector
+from src.models.student_model import StudentUpdate, StudentPatch, PaymentCollector
 from src.models.session_model import SessionStatus
 
 logger = logging.getLogger(__name__)
@@ -580,7 +580,6 @@ Meet Link:    {student.google_meets_link or 'Not set'}
 Payment By:   {payment}
 
 Hourly Prices:
-  Standard:   {student.hourly_price_standard or 'Not set'}
   Price 1:    {student.hourly_price_1 or 'Not set'}
   Price 2:    {student.hourly_price_2 or 'Not set'}
   Price 3:    {student.hourly_price_3 or 'Not set'}
@@ -610,15 +609,13 @@ def handle_update_tutor(interaction: dict) -> dict:
     if not tutor:
         return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
 
-    # Build current data for pre-population
-    current_data = {
-        "display_name": tutor.display_name,
-        "status": tutor.status.value,
-        "hourly_rate": tutor.hourly_rate,
-        "tutor_email": tutor.tutor_email,
-        "tutor_phone": tutor.tutor_phone,
-        "tutor_timezone": tutor.tutor_timezone,
-    }
+    # Build current data dynamically from TutorUpdate fields
+    current_data = {}
+    for field_name in TutorUpdate.model_fields:
+        value = getattr(tutor, field_name, None)
+        if hasattr(value, "value"):  # enum → string
+            value = value.value
+        current_data[field_name] = value
 
     return {
         "type": 9,  # MODAL
@@ -662,19 +659,15 @@ def handle_update_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    # Build current data for pre-population
-    current_data = {
-        "student_email": student.student_email,
-        "student_timezone": student.student_timezone,
-        "hourly_price_standard": student.hourly_price_standard,
-        "hourly_price_1": student.hourly_price_1,
-        "hourly_price_2": student.hourly_price_2,
-        "hourly_price_3": student.hourly_price_3,
-        "hourly_price_4": student.hourly_price_4,
-        "hourly_price_5": student.hourly_price_5,
-        "hourly_price_no_show": student.hourly_price_no_show,
-        "payment_collected_by": student.payment_collected_by.value if student.payment_collected_by else None,
-    }
+    # Build current data dynamically from StudentPatch fields
+    current_data = {}
+    for field_name in StudentPatch.model_fields:
+        value = getattr(student, field_name, None)
+        if hasattr(value, "value"):  # enum → string
+            value = value.value
+        elif hasattr(value, "model_dump"):  # nested Pydantic model → dict
+            value = value.model_dump()
+        current_data[field_name] = value
 
     return {
         "type": 9,  # MODAL
@@ -727,7 +720,7 @@ def handle_tutor_modal_submit(interaction: dict) -> dict:
         return {"type": 4, "data": {"content": "No data provided.", "flags": 64}}
 
     try:
-        data = json.loads(json_value)
+        data = json.loads(json_value.replace('\r', ''))
 
         # Handle status enum conversion
         if "status" in data and data["status"]:
@@ -768,11 +761,17 @@ def handle_student_modal_submit(interaction: dict) -> dict:
         return {"type": 4, "data": {"content": "No data provided.", "flags": 64}}
 
     try:
-        data = json.loads(json_value)
+        data = json.loads(json_value.replace('\r', ''))
 
         # Handle payment_collected_by enum conversion
         if "payment_collected_by" in data and data["payment_collected_by"]:
             data["payment_collected_by"] = PaymentCollector(data["payment_collected_by"])
+
+        # Convert plain string phone numbers to PhoneNumber-compatible dicts
+        for phone_field in ("number_1", "number_2", "number_3"):
+            val = data.get(phone_field)
+            if isinstance(val, str) and val:
+                data[phone_field] = {"phone_number": val, "sms_enabled": True}
 
         update = StudentUpdate(**data)
         result = student_functions.update_student(student_name, update)
