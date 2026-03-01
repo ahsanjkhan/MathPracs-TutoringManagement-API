@@ -3,13 +3,15 @@ from typing import Optional
 from boto3.dynamodb.conditions import Key, Attr
 from src.config import get_settings
 from src.functions import dynamodb
-from src.models.tutor_model import Tutor, TutorStatus, TutorUpdate
+from src.models.tutor_v2_model import TutorV2, TutorMetadataV2, TutorStatus, TutorV2Update, TutorMetadataV2Update, \
+    TutorMetadataV2UpdateNameOnly
 
 settings = get_settings()
 
 
-def get_all_tutors(status_filter: Optional[TutorStatus] = None) -> list[Tutor]:
+def get_all_tutors(status_filter: Optional[TutorStatus] = None) -> list[TutorV2]:
     """Get all tutors, optionally filtered by status."""
+    print(f"Entered get_all_tutors")
     if status_filter:
         items = dynamodb.scan_table(
             settings.tutors_table,
@@ -17,41 +19,50 @@ def get_all_tutors(status_filter: Optional[TutorStatus] = None) -> list[Tutor]:
         )
     else:
         items = dynamodb.scan_table(settings.tutors_table)
-    return [Tutor.from_dynamodb(item) for item in items]
+    return [TutorV2.from_dynamodb(item) for item in items]
 
 
-def get_tutor(tutor_id: str) -> Optional[Tutor]:
+def get_tutor(tutor_id: str) -> Optional[TutorV2]:
     """Get a tutor by tutor_id. Returns None if not found."""
     item = dynamodb.get_item(settings.tutors_table, {"tutorId": tutor_id})
     if item:
-        return Tutor.from_dynamodb(item)
+        return TutorV2.from_dynamodb(item)
     return None
 
 
-def get_tutor_by_name(name: str) -> Optional[Tutor]:
-    """Find tutor by name (case-insensitive partial match on first word before 'Tutoring')."""
+def get_tutor_metadata(tutor_id: str) -> Optional[TutorMetadataV2]:
+    """Get tutor metadata by tutor_id. Returns None if not found."""
+    item = dynamodb.get_item(settings.tutors_metadata_table, {"tutorId": tutor_id})
+    if item:
+        return TutorMetadataV2.from_dynamodb(item)
+    return None
+
+
+def get_all_tutors_metadata() -> dict[str, TutorMetadataV2]:
+    """Scan TutorsMetadataV2 and return a dict keyed by tutor_id."""
+    items = dynamodb.scan_table(settings.tutors_metadata_table)
+    return {item["tutorId"]: TutorMetadataV2.from_dynamodb(item) for item in items}
+
+
+def get_tutor_by_name(name: str) -> Optional[TutorV2]:
+    """Find tutor by name (case-insensitive partial match on first word)."""
     search_term = name.strip().lower()
     tutors = get_all_tutors(status_filter=TutorStatus.ACTIVE)
     for tutor in tutors:
-        # Extract first name from display_name (e.g., "Mustafa Tutoring Schedule" -> "mustafa")
-        display_lower = tutor.display_name.lower()
-        first_word = display_lower.split()[0] if display_lower else ""
-        if first_word == search_term:
+        if tutor.tutor_name.lower() == search_term:
             return tutor
     return None
 
 
-def resolve_tutor(identifier: str) -> Optional[Tutor]:
+def resolve_tutor(identifier: str) -> Optional[TutorV2]:
     """Resolve tutor by ID or name. Tries ID first, then name lookup."""
-    # Try by tutor_id first
     tutor = get_tutor(identifier)
     if tutor:
         return tutor
-    # Try by name (case-insensitive)
     return get_tutor_by_name(identifier)
 
 
-def get_tutor_by_calendar_id(calendar_id: str) -> Optional[Tutor]:
+def get_tutor_by_calendar_id(calendar_id: str) -> Optional[TutorV2]:
     """Find a tutor by their Google Calendar ID using GSI."""
     items = dynamodb.query_by_gsi(
         settings.tutors_table,
@@ -59,30 +70,58 @@ def get_tutor_by_calendar_id(calendar_id: str) -> Optional[Tutor]:
         Key("calendarId").eq(calendar_id),
     )
     if items:
-        return Tutor.from_dynamodb(items[0])
+        return TutorV2.from_dynamodb(items[0])
     return None
 
 
-def get_tutor_by_discord_channel_id(channel_id: str) -> Optional[Tutor]:
+def get_tutor_by_discord_channel_id(channel_id: str) -> Optional[TutorV2]:
     """Find a tutor by their Discord channel ID."""
     items = dynamodb.scan_table(
         settings.tutors_table,
         FilterExpression=Attr("discordChannelId").eq(channel_id),
     )
     if items:
-        return Tutor.from_dynamodb(items[0])
+        return TutorV2.from_dynamodb(items[0])
     return None
 
 
-def create_tutor(display_name: str, calendar_id: str, access_role: str) -> Tutor:
-    """Function to create new tutor. Not used for Route, but for sync purposes."""
-    tutor = Tutor(display_name=display_name, calendar_id=calendar_id, access_role=access_role)
+def create_tutor(display_name: str, calendar_id: str, access_role: str) -> TutorV2:
+    """Create a new tutor in TutorsV2 and an empty metadata entry in TutorsMetadataV2."""
+    extracted_tutor_name = extract_tutor_name_from_display_name(display_name)
+    tutor = TutorV2(
+        display_name=display_name,
+        tutor_name=extracted_tutor_name,
+        calendar_id=calendar_id,
+        access_role=access_role,
+    )
     dynamodb.put_item(settings.tutors_table, tutor.to_dynamodb())
+    meta = TutorMetadataV2(
+        tutor_id=tutor.tutor_id,
+        display_name=display_name,
+        tutor_name=extracted_tutor_name,
+    )
+    dynamodb.put_item(settings.tutors_metadata_table, meta.to_dynamodb())
     return tutor
 
 
-def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
-    """Updates the tutor record in Tutors table using provided tutor_id and updates using TutorUpdate model."""
+def set_tutor_discord_channel(tutor_id: str, channel_id: str, onboarding_msg_id: Optional[str] = None) -> bool:
+    """Set discord channel fields on a tutor. Called once by the sync flow after channel creation."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return False
+    update_data = {
+        "discordChannelId": channel_id,
+        "updatedAt": datetime.utcnow().isoformat(),
+    }
+    if onboarding_msg_id:
+        update_data["discordOnboardingMessageId"] = onboarding_msg_id
+    dynamodb.update_item(settings.tutors_table, {"tutorId": tutor_id}, update_data)
+    return True
+
+
+def update_tutor(tutor_id: str, updates: TutorV2Update) -> Optional[TutorV2]:
+    """Update operational tutor fields in TutorsV2 (display_name, tutor_name, status).
+    Used when refreshing tutors from G Cal or when sync notices that the calendar name has changed"""
     existing = get_tutor(tutor_id)
     if not existing:
         return None
@@ -90,8 +129,46 @@ def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
     update_data = {}
     if updates.display_name is not None:
         update_data["displayName"] = updates.display_name
+    if updates.tutor_name is not None:
+        update_data["tutorName"] = updates.tutor_name
     if updates.status is not None:
         update_data["status"] = updates.status.value
+
+    if not update_data:
+        return existing
+
+    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    dynamodb.update_item(settings.tutors_table, {"tutorId": tutor_id}, update_data)
+    return get_tutor(tutor_id)
+
+def update_tutor_metadata_name(tutor_id: str, updates: TutorMetadataV2UpdateNameOnly) -> Optional[TutorMetadataV2]:
+    """Update tutor name and display name metadata fields in TutorsMetadataV2.
+    Used when refreshing tutors from G Cal or when sync notices that the calendar name has changed"""
+    existing = get_tutor_metadata(tutor_id)
+    if not existing:
+        return None
+
+    update_data = {}
+    if updates.display_name is not None:
+        update_data["displayName"] = updates.display_name
+    if updates.tutor_name is not None:
+        update_data["tutorName"] = updates.tutor_name
+
+    if not update_data:
+        return get_tutor_metadata(tutor_id)
+
+    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    dynamodb.update_item(settings.tutors_metadata_table, {"tutorId": tutor_id}, update_data)
+    return get_tutor_metadata(tutor_id)
+
+
+def update_tutor_metadata(tutor_id: str, updates: TutorMetadataV2Update) -> Optional[TutorMetadataV2]:
+    """Update tutor metadata fields in TutorsMetadataV2 (hourly_rate, email, phone, timezone)."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return None
+
+    update_data = {}
     if updates.hourly_rate is not None:
         update_data["hourlyRate"] = updates.hourly_rate
     if updates.tutor_email is not None:
@@ -102,23 +179,25 @@ def update_tutor(tutor_id: str, updates: TutorUpdate) -> Optional[Tutor]:
         update_data["tutorTimezone"] = updates.tutor_timezone
 
     if not update_data:
-        return existing
+        return get_tutor_metadata(tutor_id)
 
     update_data["updatedAt"] = datetime.utcnow().isoformat()
-
-    updated_item = dynamodb.update_item(
-        settings.tutors_table,
-        {"tutorId": tutor_id},
-        update_data,
-    )
-    return Tutor.from_dynamodb(updated_item)
+    dynamodb.update_item(settings.tutors_metadata_table, {"tutorId": tutor_id}, update_data)
+    return get_tutor_metadata(tutor_id)
 
 
 def delete_tutor(tutor_id: str) -> bool:
-    """Soft-deletes, flags the record of the tutor present in the Tutors table as Inactive."""
-    existing_tutor = get_tutor(tutor_id)
-    if not existing_tutor:
+    """Soft-delete: mark tutor as INACTIVE in TutorsV2."""
+    existing = get_tutor(tutor_id)
+    if not existing:
         return False
-
-    dynamodb.update_item(settings.tutors_table, {"tutorId": tutor_id}, {"status": TutorStatus.INACTIVE.value, "updatedAt": datetime.utcnow().isoformat()})
+    dynamodb.update_item(
+        settings.tutors_table,
+        {"tutorId": tutor_id},
+        {"status": TutorStatus.INACTIVE.value, "updatedAt": datetime.utcnow().isoformat()},
+    )
     return True
+
+def extract_tutor_name_from_display_name(display_name: str) -> str:
+    """Takes input of calendar name like Jacob Tutoring Schedule and extracts Jacob."""
+    return display_name.split()[0] if display_name and display_name.split() else ""

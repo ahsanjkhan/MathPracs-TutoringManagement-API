@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -11,21 +11,23 @@ class TutorStatus(str, Enum):
 
 
 class TutorV2(BaseModel):
-    """Operational tutor data - never manually updated."""
+    """Auto-generated tutor data - never manually updated."""
     tutor_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     display_name: str
+    tutor_name: str
     calendar_id: str
     access_role: str
     status: TutorStatus = TutorStatus.ACTIVE
     discord_channel_id: Optional[str] = None
     discord_onboarding_message_id: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dynamodb(self) -> dict:
         data = {
             "tutorId": self.tutor_id,
             "displayName": self.display_name,
+            "tutorName": self.tutor_name,
             "calendarId": self.calendar_id,
             "accessRole": self.access_role,
             "status": self.status.value,
@@ -40,9 +42,11 @@ class TutorV2(BaseModel):
 
     @classmethod
     def from_dynamodb(cls, item: dict) -> "TutorV2":
+        print(f"Attempting TutorV2 from_dynamodb on {item}")
         return cls(
             tutor_id=item["tutorId"],
             display_name=item["displayName"],
+            tutor_name=item.get("tutorName"),
             calendar_id=item["calendarId"],
             access_role=item["accessRole"],
             status=TutorStatus(item["status"]),
@@ -54,19 +58,20 @@ class TutorV2(BaseModel):
 
 
 class TutorMetadataV2(BaseModel):
-    """Manually configured tutor data."""
+    """Manually generated tutor metadata."""
     tutor_id: str
-    display_name: str  # Added - appears in both tables
+    display_name: str
+    tutor_name: str
     hourly_rate: float = 10.0
+    tutor_timezone: str = "Asia/Karachi"
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
-    tutor_timezone: str = "Asia/Karachi"
-    tutor_name: Optional[str] = None  # Added from schema
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dynamodb(self) -> dict:
         data = {
             "tutorId": self.tutor_id,
+            "tutorName": self.tutor_name,
             "displayName": self.display_name,
             "hourlyRate": self.hourly_rate,
             "tutorTimezone": self.tutor_timezone,
@@ -76,8 +81,6 @@ class TutorMetadataV2(BaseModel):
             data["tutorEmail"] = self.tutor_email
         if self.tutor_phone:
             data["tutorPhone"] = self.tutor_phone
-        if self.tutor_name:
-            data["tutorName"] = self.tutor_name
         return data
 
     @classmethod
@@ -85,19 +88,22 @@ class TutorMetadataV2(BaseModel):
         return cls(
             tutor_id=item["tutorId"],
             display_name=item["displayName"],
+            tutor_name=item.get("tutorName"),
             hourly_rate=float(item.get("hourlyRate", 10.0)),
             tutor_timezone=item.get("tutorTimezone", "Asia/Karachi"),
             tutor_email=item.get("tutorEmail"),
             tutor_phone=item.get("tutorPhone"),
-            tutor_name=item.get("tutorName"),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
 
-
 class TutorV2Update(BaseModel):
     display_name: Optional[str] = None
+    tutor_name: Optional[str] = None
     status: Optional[TutorStatus] = None
 
+class TutorMetadataV2UpdateNameOnly(BaseModel):
+    display_name: Optional[str] = None
+    tutor_name: Optional[str] = None
 
 class TutorMetadataV2Update(BaseModel):
     hourly_rate: Optional[float] = None

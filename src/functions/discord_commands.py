@@ -9,7 +9,6 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from typing import Optional
 
 import httpx
 
@@ -24,9 +23,9 @@ from src.functions import (
     groq_utils,
 )
 from src.functions.google_docs import extract_student_name
-from src.models.tutor_model import TutorStatus, TutorUpdate
-from src.models.student_model import StudentUpdate, PaymentCollector
 from src.models.session_model import SessionStatus
+from src.models.student_v2_model import StudentMetadataV2Update, PaymentCollector, PaymentRecord, TransactionType
+from src.models.tutor_v2_model import TutorStatus, TutorMetadataV2Update
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -148,13 +147,18 @@ def handle_sessions(interaction: dict, application_id: str) -> None:
     user_id = interaction.get("member", {}).get("user", {}).get("id")
 
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
-
     if not tutor:
-        send_followup(application_id, interaction_token, content="This channel is not linked to a tutor.")
+        send_followup(application_id, interaction_token, content="This channel is not linked to a tutor. Are you in your tutor channel?")
         return
 
-    tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-    tutor_tz = ZoneInfo(tutor.tutor_timezone)
+    tutor_name = tutor.tutor_name
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+
+    if not tutor_meta:
+        send_followup(application_id, interaction_token, content="Internal Error: TutorMetadata not found. Please reach out to Muaz or Ahsan")
+        return
+
+    tutor_tz = ZoneInfo(tutor_meta.tutor_timezone)
 
     all_sessions = session_functions.get_sessions_by_tutor(tutor.tutor_id)
 
@@ -194,13 +198,19 @@ def handle_earnings(interaction: dict, application_id: str) -> None:
     tutor = tutor_functions.get_tutor_by_discord_channel_id(channel_id)
 
     if not tutor:
-        send_followup(application_id, token, content="This channel is not linked to a tutor.")
+        send_followup(application_id, token, content="This channel is not linked to a tutor. Are you in your tutor channel?")
         return
 
-    tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
-    hourly_rate = tutor.hourly_rate or 0
+    tutor_name = tutor.tutor_name
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
 
-    central_tz = timezone(timedelta(hours=-6))
+    if not tutor_meta:
+        send_followup(application_id, token, content="Internal Error: TutorMetadata not found. Please reach out to Muaz or Ahsan")
+        return
+
+    hourly_rate = tutor_meta.hourly_rate
+
+    central_tz = ZoneInfo("America/Chicago")
     now_central = datetime.now(central_tz)
     year = now_central.year
     month = now_central.month
@@ -273,7 +283,7 @@ def handle_links_student(interaction: dict, application_id: str) -> None:
 
 def handle_total_earnings(interaction: dict, application_id: str) -> None:
     """Handle /tutor_monthly_payments command — called as a deferred background task."""
-    central_tz = timezone(timedelta(hours=-6))
+    central_tz = ZoneInfo("America/Chicago")
     now_central = datetime.now(central_tz)
     year = now_central.year
     month = now_central.month
@@ -284,6 +294,7 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
 
     tutors = tutor_functions.get_all_tutors(status_filter=TutorStatus.ACTIVE)
     tutor_map = {t.tutor_id: t for t in tutors}
+    meta_map = tutor_functions.get_all_tutors_metadata()
 
     # Single DynamoDB scan instead of one query per tutor
     all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
@@ -310,7 +321,8 @@ def handle_total_earnings(interaction: dict, application_id: str) -> None:
         total_demos    += demo_count
         total_no_shows += no_show_count
 
-        hourly_rate = tutor.hourly_rate or 0
+        tutor_meta = meta_map.get(tutor_id)
+        hourly_rate = (tutor_meta.hourly_rate if tutor_meta else 0) or 0
         total_hours = sum((s.end - s.start).total_seconds() / 3600 for s in completed)
         earnings = total_hours * hourly_rate
         grand_total += earnings
@@ -344,7 +356,7 @@ _Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('
 
 def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
     """Handle /hours_tutored_chart command — called as a deferred background task."""
-    central_tz = timezone(timedelta(hours=-6))
+    central_tz = ZoneInfo("America/Chicago")
     now_central = datetime.now(central_tz)
     current_year = now_central.year
     current_month = now_central.month
@@ -434,6 +446,7 @@ def handle_help(interaction: dict) -> dict:
         ("get_student",            "Get details for a student"),
         ("update_tutor",           "Update tutor details"),
         ("update_student",         "Update student details"),
+        ("record_payment",         "Record a payment transaction for a student"),
         ("manual_sync",            "Manually trigger a calendar sync"),
         ("tutor_monthly_payments", "View total earnings across all tutors for the current month"),
         ("hours_tutored_chart",    "Bar chart of total hours tutored per month"),
@@ -532,22 +545,32 @@ def handle_get_tutor(interaction: dict) -> dict:
     if not tutor_name:
         return {"type": 4, "data": {"content": "Please provide a tutor name.", "flags": 64}}
 
-    tutor = tutor_functions.resolve_tutor(tutor_name)
+    tutor = tutor_functions.get_tutor_by_name(tutor_name)
     if not tutor:
         return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
 
-    info = f"""**Tutor: {tutor.display_name}**
+    meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+    if not meta:
+        return {"type": 4, "data": {"content": f"InternalError: Tutor '{tutor_name}' meta not found.", "flags": 64}}
+
+    info = f"""**Tutor: {tutor.tutor_name}**
 ```
 ID:           {tutor.tutor_id}
+Display Name: {tutor.display_name}
+Tutor Name:   {tutor.tutor_name}
 Calendar ID:  {tutor.calendar_id}
+Access Role:  {tutor.access_role}
 Status:       {tutor.status.value}
-Hourly Rate:  ${tutor.hourly_rate}
-Timezone:     {tutor.tutor_timezone}
-Email:        {tutor.tutor_email or 'Not set'}
-Phone:        {tutor.tutor_phone or 'Not set'}
-Discord Ch:   {tutor.discord_channel_id or 'Not set'}
-Created:      {tutor.created_at.strftime('%Y-%m-%d %H:%M')}
-Updated:      {tutor.updated_at.strftime('%Y-%m-%d %H:%M')}
+DiscordChId:  {tutor.discord_channel_id}
+DiscOnMsgId:  {tutor.discord_onboarding_message_id}
+Created At:   {tutor.created_at.strftime('%Y-%m-%d %H:%M')}
+Updated At:   {tutor.updated_at.strftime('%Y-%m-%d %H:%M')}
+Hourly Rate:  ${meta.hourly_rate}
+Email:        {meta.tutor_email}
+Phone:        {meta.tutor_phone}
+Timezone:     {meta.tutor_timezone}
+UpdAt Meta:   {meta.updated_at}
+
 ```"""
 
     return {"type": 4, "data": {"content": info, "flags": 64}}
@@ -569,25 +592,33 @@ def handle_get_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    payment = student.payment_collected_by.value if student.payment_collected_by else "Not set"
+    meta = student_functions.get_student_metadata(student_name)
+    if not meta:
+        return {"type": 4, "data": {"content": f"InternalError: Student '{student_name}' meta not found.", "flags": 64}}
+
+    payment = meta.payment_collected_by if meta.payment_collected_by else "Not set"
+    pricing = json.dumps(meta.hourly_pricing, indent=2) if meta.hourly_pricing else "Not set"
 
     info = f"""**Student: {student.student_name}**
 ```
-Email:        {student.student_email or 'Not set'}
-Timezone:     {student.student_timezone or 'Not set'}
+StudentName:  {student.student_name}
+createdAt:    {student.created_at.strftime('%Y-%m-%d %H:%M')}
 Doc ID:       {student.doc_id}
-Meet Link:    {student.google_meets_link or 'Not set'}
-Payment By:   {payment}
+Doc URL:      {student.doc_url}
+FileReqLink:  {student.file_request_link}
+GMeetLink:    {student.google_meets_link}
+hwUploadLink: {student.hw_upload_link}
+balance:      ${student.balance:.2f}
+phoneNums:    {meta.phone_numbers}
+studentTZ:    {meta.student_timezone}
+noShowCstRt:  {meta.no_show_custom_rate}
+pmtCltBy:     {payment}
+dscChnlRemId: {meta.discord_channel_reminder_id}
+updtAtMeta:   {meta.updated_at}
 
-Hourly Prices:
-  Price 1:    {student.hourly_price_1 or 'Not set'}
-  Price 2:    {student.hourly_price_2 or 'Not set'}
-  Price 3:    {student.hourly_price_3 or 'Not set'}
-  Price 4:    {student.hourly_price_4 or 'Not set'}
-  Price 5:    {student.hourly_price_5 or 'Not set'}
-  No Show:    {student.hourly_price_no_show or 'Not set'}
+Hourly Pricing:
+{pricing}
 
-Created:      {student.created_at.strftime('%Y-%m-%d %H:%M')}
 ```"""
 
     return {"type": 4, "data": {"content": info, "flags": 64}}
@@ -605,17 +636,17 @@ def handle_update_tutor(interaction: dict) -> dict:
     if not tutor_name:
         return {"type": 4, "data": {"content": "Please provide a tutor name.", "flags": 64}}
 
-    tutor = tutor_functions.resolve_tutor(tutor_name)
+    tutor = tutor_functions.get_tutor_by_name(tutor_name)
     if not tutor:
         return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
 
-    # Build current data dynamically from TutorUpdate fields
+    # Prepopulate with metadata fields only (hourly_rate, email, phone, timezone)
+    tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+    if not tutor_meta:
+        return {"type": 4, "data": {"content": f"InternalError: Tutor '{tutor_name}' meta not found.", "flags": 64}}
     current_data = {}
-    for field_name in TutorUpdate.model_fields:
-        value = getattr(tutor, field_name, None)
-        if hasattr(value, "value"):  # enum → string
-            value = value.value
-        current_data[field_name] = value
+    for field_name in TutorMetadataV2Update.model_fields:
+        current_data[field_name] = getattr(tutor_meta, field_name, None)
 
     return {
         "type": 9,  # MODAL
@@ -659,14 +690,13 @@ def handle_update_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    # Build current data dynamically from StudentUpdate fields
+    # Build current data from StudentMetadataV2Update fields (metadata)
+    student_meta = student_functions.get_student_metadata(student.student_name)
+    if not student_meta:
+        return {"type": 4, "data": {"content": f"InternalError: Student '{student_name}' meta not found.", "flags": 64}}
     current_data = {}
-    for field_name in StudentUpdate.model_fields:
-        value = getattr(student, field_name, None)
-        if hasattr(value, "value"):  # enum → string
-            value = value.value
-        elif hasattr(value, "model_dump"):  # nested Pydantic model → dict
-            value = value.model_dump()
+    for field_name in StudentMetadataV2Update.model_fields:
+        value = getattr(student_meta, field_name, None) if student_meta else None
         current_data[field_name] = value
 
     return {
@@ -693,6 +723,69 @@ def handle_update_student(interaction: dict) -> dict:
             ]
         }
     }
+
+
+def handle_record_payment(interaction: dict) -> dict:
+    """Handle /record_payment command."""
+    options = interaction.get("data", {}).get("options", [])
+    
+    student_name = None
+    amount = None
+    action_by = None
+    transaction_type = TransactionType.CREDIT
+    
+    for opt in options:
+        name = opt.get("name")
+        value = opt.get("value")
+        if name == "student_name":
+            student_name = value
+        elif name == "amount":
+            amount = abs(float(value))
+        elif name == "action_by":
+            action_by = value if value else None
+            # Validate it's a valid enum value
+            if action_by and action_by not in [e.value for e in PaymentCollector]:
+                return {"type": 4, "data": {"content": f"Invalid action_by. Must be one of: {', '.join([e.value for e in PaymentCollector])}", "flags": 64}}
+    
+    if not all([student_name, amount is not None, action_by]):
+        return {"type": 4, "data": {"content": "Please provide student_name, amount, and action_by.", "flags": 64}}
+    
+    # Verify student exists
+    student = student_functions.get_student(student_name)
+    if not student:
+        return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
+    
+    try:
+        # Create payment record
+        payment_record = PaymentRecord(
+            student_name=student_name,
+            amount=amount,
+            action_by=action_by,
+            transaction_type=transaction_type
+        )
+        
+        # Convert to transaction and save
+        transaction = payment_record.to_transaction()
+        
+        # Save to DynamoDB (assuming we have a transactions table)
+        dynamodb.put_item(settings.transactions_table, transaction.to_dynamodb())
+        
+        # Update student balance
+        new_balance = student.balance - amount
+            
+        student_functions.update_student_balance(student_name, new_balance)
+        
+        action_text = "payment"
+        return {
+            "type": 4, 
+            "data": {
+                "content": f"Successfully recorded: **{student_name}** {action_text} of **${amount:.2f}** to {action_by}\nNew balance: **${new_balance:.2f}**",
+                "flags": 64
+            }
+        }
+        
+    except Exception as e:
+        return {"type": 4, "data": {"content": f"Error recording payment: {str(e)}", "flags": 64}}
 
 
 # =============================================================================
@@ -722,17 +815,16 @@ def handle_tutor_modal_submit(interaction: dict) -> dict:
     try:
         data = json.loads(json_value.replace('\r', ''))
 
-        # Handle status enum conversion
-        if "status" in data and data["status"]:
-            data["status"] = TutorStatus(data["status"])
+        meta_update = TutorMetadataV2Update(
+            hourly_rate=data.get("hourly_rate"),
+            tutor_email=data.get("tutor_email"),
+            tutor_phone=data.get("tutor_phone"),
+            tutor_timezone=data.get("tutor_timezone"),
+        )
 
-        update = TutorUpdate(**data)
-        result = tutor_functions.update_tutor(tutor_id, update)
+        tutor_functions.update_tutor_metadata(tutor_id, meta_update)
 
-        if result:
-            return {"type": 4, "data": {"content": f"Successfully updated tutor!", "flags": 64}}
-        else:
-            return {"type": 4, "data": {"content": "Failed to update tutor.", "flags": 64}}
+        return {"type": 4, "data": {"content": "Successfully updated tutor!", "flags": 64}}
 
     except json.JSONDecodeError as e:
         return {"type": 4, "data": {"content": f"Invalid JSON: {e}", "flags": 64}}
@@ -763,23 +855,32 @@ def handle_student_modal_submit(interaction: dict) -> dict:
     try:
         data = json.loads(json_value.replace('\r', ''))
 
-        # Handle payment_collected_by enum conversion
-        if "payment_collected_by" in data and data["payment_collected_by"]:
-            data["payment_collected_by"] = PaymentCollector(data["payment_collected_by"])
+        payment_collected_by = data.get("payment_collected_by")
+        # Validate it's a valid enum value
+        if payment_collected_by and payment_collected_by not in [e.value for e in PaymentCollector]:
+            return {"type": 4, "data": {"content": f"Invalid payment_collected_by. Must be one of: {', '.join([e.value for e in PaymentCollector])}", "flags": 64}}
 
-        # Convert plain string phone numbers to PhoneNumber-compatible dicts
-        for phone_field in ("number_1", "number_2", "number_3"):
-            val = data.get(phone_field)
-            if isinstance(val, str) and val:
-                data[phone_field] = {"phone_number": val, "sms_enabled": True}
-
-        update = StudentUpdate(**data)
-        result = student_functions.update_student(student_name, update)
-
-        if result:
-            return {"type": 4, "data": {"content": f"Successfully updated **{student_name}**!", "flags": 64}}
+        if payment_collected_by:
+            discord_payment_channel_id = discord_utils.get_discord_payment_channel_id(payment_collected_by)
+            meta_update = StudentMetadataV2Update(
+                hourly_pricing=data.get("hourly_pricing"),
+                phone_numbers=data.get("phone_numbers"),
+                student_timezone=data.get("student_timezone"),
+                no_show_custom_rate=data.get("no_show_custom_rate"),
+                payment_collected_by=payment_collected_by,
+                discord_channel_reminder_id=discord_payment_channel_id,
+            )
         else:
-            return {"type": 4, "data": {"content": "Failed to update student.", "flags": 64}}
+            meta_update = StudentMetadataV2Update(
+                hourly_pricing=data.get("hourly_pricing"),
+                phone_numbers=data.get("phone_numbers"),
+                student_timezone=data.get("student_timezone"),
+                no_show_custom_rate=data.get("no_show_custom_rate"),
+            )
+
+        student_functions.update_student_metadata(student_name, meta_update)
+
+        return {"type": 4, "data": {"content": f"Successfully updated **{student_name}**!", "flags": 64}}
 
     except json.JSONDecodeError as e:
         return {"type": 4, "data": {"content": f"Invalid JSON: {e}", "flags": 64}}

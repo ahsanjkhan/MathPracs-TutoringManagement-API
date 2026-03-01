@@ -53,23 +53,6 @@ def create_folder(folder_name: str, parent_id: str) -> Optional[str]:
         raise
 
 
-def get_existing_student_doc(student_name: str, parent_folder_id: str) -> Optional[dict]:
-    """Check if a student doc exists with MathPracs suffix. Returns {id, url} or None."""
-    try:
-        service = get_drive_service()
-        doc_name = f"{student_name} MathPracs"
-        escaped_name = doc_name.replace("'", "\\'")
-        query = f"name = '{escaped_name}' and '{parent_folder_id}' in parents and mimeType = 'application/vnd.google-apps.document' and trashed = false"
-        results = service.files().list(q=query, fields="files(id, webViewLink)").execute()
-        files = results.get("files", [])
-        if files:
-            return {"id": files[0].get("id"), "url": files[0].get("webViewLink")}
-        return None
-    except Exception as e:
-        logger.error(f"Failed to search for student doc: {e}")
-        return None
-
-
 @retry_on_error()
 def create_doc(doc_name: str, parent_folder_id: str) -> Optional[dict]:
     """Create a Google Doc. Returns {id, url} or None."""

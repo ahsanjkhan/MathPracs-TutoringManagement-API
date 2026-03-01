@@ -9,8 +9,7 @@ from src.functions import sync_functions, discord_commands
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -46,10 +45,13 @@ def lambda_handler(event, context):
     # EventBridge scheduled sync
     if event.get('source') == 'aws.events' or 'detail-type' in event:
         logger.info("EventBridge sync triggered")
+        print("EventBridge sync triggered")
         try:
             # Run the sync directly
             calendar_result = sync_functions.sync_calendar_list()
+            print(f"sync_functions.sync_calendar_list() done, starting sync_functions.sync_events_list next")
             sessions_result = sync_functions.sync_events_list(tutor_cal_id="ALL")
+            print(f"sync_functions.sync_events_list done")
             logger.info(f"Sync completed - calendars: {calendar_result}, sessions: {sessions_result}")
             return {
                 "statusCode": 200,

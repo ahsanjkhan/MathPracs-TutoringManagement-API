@@ -119,6 +119,23 @@ def delete_session(tutor_id: str, session_id: str) -> bool:
     return True
 
 
+def get_most_recent_tutor_id_for_student(student_name: str) -> Optional[str]:
+    """Find the tutor_id from the most recent session for a given student.
+    Prefers completed sessions, falls back to scheduled if none found."""
+    from boto3.dynamodb.conditions import Attr
+    items = dynamodb.scan_table(
+        settings.sessions_table,
+        FilterExpression=Attr("summary").contains(student_name),
+    )
+    if not items:
+        return None
+    sessions = [Session.from_dynamodb(i) for i in items]
+    completed = [s for s in sessions if s.status == SessionStatus.COMPLETED]
+    pool = completed if completed else sessions
+    most_recent = max(pool, key=lambda s: s.utc_start or s.start)
+    return most_recent.tutor_id
+
+
 def parse_calendar_datetime(dt_info: dict) -> Optional[datetime]:
     """Parse datetime from Google Calendar event. Normalizes Google's two time formats into one Python datetime"""
     if "dateTime" in dt_info:

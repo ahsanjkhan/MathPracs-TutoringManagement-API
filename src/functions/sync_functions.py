@@ -9,10 +9,10 @@ from src.config import get_settings
 from src.config import SESSION_CUTOFF_DATE
 from src.functions import dynamodb, google_calendar, google_docs, google_meet, tutor_functions, session_functions, dropbox, ssm_utils
 from src.functions import discord_utils  # COMMENT LINE 10 to enable Discord channel creation
-from src.models.tutor_model import TutorUpdate, TutorStatus
+from src.models.tutor_v2_model import TutorV2Update, TutorStatus, TutorMetadataV2Update, TutorMetadataV2UpdateNameOnly
 from src.models.session_model import SessionUpdate, SessionStatus
 from src.models.calendar_state_model import CalendarListState
-from src.models.student_model import Student
+from src.models.student_v2_model import StudentV2, StudentMetadataV2
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -41,6 +41,7 @@ def save_sync_state(sync_state: CalendarListState) -> None:
 
 def refresh_tracked_tutors() -> tuple[int, int]:
     """Check all active tutors and update/deactivate based on calendar status. Returns (updated, deactivated)."""
+    print("Refreshing tracked tutors...")
     updated = 0
     deactivated = 0
 
@@ -54,9 +55,13 @@ def refresh_tracked_tutors() -> tuple[int, int]:
                 continue
             raise
 
-        new_name = cal.get("summary", t.calendar_id)
-        if new_name != t.display_name:
-            tutor_functions.update_tutor(t.tutor_id, TutorUpdate(display_name=new_name))
+        new_display_name = cal.get("summary", t.calendar_id)
+        print(f"New tutor display name is: {new_display_name}")
+        new_tutor_name = tutor_functions.extract_tutor_name_from_display_name(new_display_name)
+        print(f"New tutor name is: {new_tutor_name}")
+        if new_display_name != t.display_name:
+            tutor_functions.update_tutor(t.tutor_id, TutorV2Update(display_name=new_display_name, tutor_name=new_tutor_name))
+            tutor_functions.update_tutor_metadata_name(t.tutor_id, TutorMetadataV2UpdateNameOnly(display_name=new_display_name, tutor_name=new_tutor_name))
             updated += 1
 
     return updated, deactivated
@@ -65,6 +70,7 @@ def refresh_tracked_tutors() -> tuple[int, int]:
 def sync_calendar_list() -> dict:
     """Sync calendars from Google. Discovers tutors with 'tutoring' in the name. Returns counts."""
     logger.info("Syncing calendar list...")
+    print("Syncing calendar list...")
     sync_state = get_sync_state(CALENDAR_LIST_SYNC_TYPE)
     sync_token = sync_state.sync_token if sync_state else None
 
@@ -77,6 +83,11 @@ def sync_calendar_list() -> dict:
     for cal in calendars:
         calendar_id = cal.get("id")
         display_name = cal.get("summary", calendar_id)
+        logger.info(f"Syncing calendar with id: {calendar_id}, and name: {display_name}")
+        print(f"Syncing calendar with id: {calendar_id}, and name: {display_name}")
+        tutor_name = tutor_functions.extract_tutor_name_from_display_name(display_name)
+        logger.info(f"Extracted tutor name to be {tutor_name}")
+        print(f"Extracted tutor name to be {tutor_name}")
         access_role = cal.get("accessRole", "reader")
         deleted = cal.get("deleted", False)
 
@@ -96,7 +107,11 @@ def sync_calendar_list() -> dict:
         elif existing_tutor:
             tutor_functions.update_tutor(
                 existing_tutor.tutor_id,
-                TutorUpdate(display_name=display_name),
+                TutorV2Update(display_name=display_name, tutor_name=tutor_name),
+            )
+            tutor_functions.update_tutor_metadata_name(
+                existing_tutor.tutor_id,
+                TutorMetadataV2UpdateNameOnly(display_name=display_name, tutor_name=tutor_name),
             )
             updated += 1
         else:
@@ -114,10 +129,7 @@ def sync_calendar_list() -> dict:
                 logger.info(f"Created Discord channel for tutor: {display_name}")
                 # Send onboarding message and get its ID
                 onboarding_msg_id = discord_utils.send_onboarding_message(channel_id, display_name)
-                tutor_functions.update_tutor(
-                    tutor.tutor_id,
-                    TutorUpdate(discord_channel_id=channel_id, discord_onboarding_message_id=onboarding_msg_id)
-                )
+                tutor_functions.set_tutor_discord_channel(tutor.tutor_id, channel_id, onboarding_msg_id)
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
@@ -160,6 +172,7 @@ def sync_events_list(tutor_cal_id: str) -> dict:
 def _sync_events_list_impl(tutor_cal_id: str) -> dict:
     """Internal implementation of event sync. Creates sessions, student docs, Meet links, and Dropbox folders."""
     logger.info(f"Syncing events for: {tutor_cal_id}")
+    print(f"Syncing events for: {tutor_cal_id}")
 
     tutors = tutor_functions.get_all_tutors(status_filter=TutorStatus.ACTIVE)
     if tutor_cal_id != "ALL":
@@ -257,9 +270,10 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                         tutor.discord_channel_id):
                         # Send feedback request to tutor's channel
                         student_name = google_docs.extract_student_name(s.summary) or "Unknown"
-                        tutor_name = tutor.display_name.split()[0] if tutor.display_name else "Tutor"
+                        tutor_name = tutor.tutor_name
                         # Format session time in tutor's timezone
-                        tutor_tz = ZoneInfo(tutor.tutor_timezone)
+                        tutor_meta = tutor_functions.get_tutor_metadata(tutor.tutor_id)
+                        tutor_tz = ZoneInfo(tutor_meta.tutor_timezone if tutor_meta else "Asia/Karachi")
                         session_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
                         local_time = session_start.astimezone(tutor_tz)
                         session_time = local_time.strftime("%b %d, %Y at %I:%M %p")
@@ -295,9 +309,6 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                 except Exception as attach_err:
                                     logger.warning(f"Could not attach doc to {s.summary}: {attach_err}")
                             _verified_students.add(student_name)
-                        # Also check if doc exists in Drive (fallback for manual docs)
-                        elif student_name not in _verified_students and google_docs.get_existing_student_doc(student_name, ssm_utils.get_parent_drive_folder_id()):
-                            _verified_students.add(student_name)  # Doc exists, remember it
                         elif student_name not in _verified_students:
                             logger.info(f"Creating student doc for: {student_name}")
                             doc_name = f"{student_name} MathPracs"
@@ -320,7 +331,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                     if view_link and upload_link:
                                         google_docs.write_links_to_doc(doc["id"], student_name, view_link, upload_link, meet_url)
 
-                                student = Student(
+                                student = StudentV2(
                                     student_name=student_name,
                                     doc_id=doc["id"],
                                     doc_url=doc.get("url"),
@@ -329,6 +340,23 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                     file_request_link=upload_link,
                                 )
                                 dynamodb.put_item(settings.students_table, student.to_dynamodb())
+
+                                default_phone_numbers = {
+                                    "18324174712": {
+                                        "sessionReminders": True,
+                                        "paymentReminders": True
+                                    },
+                                    "18325745458": {
+                                        "sessionReminders": True,
+                                        "paymentReminders": True
+                                    }
+                                }
+                                student_meta = StudentMetadataV2(
+                                    student_name=student_name,
+                                    phone_numbers=default_phone_numbers
+                                )
+                                dynamodb.put_item(settings.students_metadata_table, student_meta.to_dynamodb())
+
                                 docs_created += 1
                                 _verified_students.add(student_name)  # Doc created, remember it
 

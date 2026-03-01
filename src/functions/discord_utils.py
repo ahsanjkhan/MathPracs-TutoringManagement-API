@@ -5,6 +5,7 @@ import re
 import boto3
 import httpx
 from src.config import get_settings
+from src.models.student_v2_model import PaymentCollector
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -20,6 +21,21 @@ def get_discord_credentials() -> dict:
         response = secrets_client.get_secret_value(SecretId=settings.discord_credentials_secret_name)
         _discord_credentials = json.loads(response["SecretString"])
     return _discord_credentials
+
+def get_discord_payment_channel_id(collector: str) -> str:
+    """Get Discord credentials (bot_token, guild_id) from AWS Secrets Manager."""
+    global _discord_credentials
+    if _discord_credentials is None:
+        secrets_client = boto3.client("secretsmanager", region_name=settings.aws_region)
+        response = secrets_client.get_secret_value(SecretId=settings.discord_credentials_secret_name)
+        _discord_credentials = json.loads(response["SecretString"])
+
+    if collector == PaymentCollector.MUAZ.value:
+        return _discord_credentials.get("muaz_student_payment_channel_id", "")
+    elif collector == PaymentCollector.AHSAN.value:
+        return _discord_credentials.get("ahsan_student_payment_channel_id", "")
+    else:
+        return ""
 
 
 def invoke_discord_task(command: str, interaction: dict, application_id: str) -> None:
