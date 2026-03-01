@@ -77,4 +77,17 @@ class TutorUpdate(BaseModel):
     tutor_timezone: Optional[str] = "Asia/Karachi"
 
 
-
+class TutorResponse(BaseModel):
+    tutor_id: str
+    display_name: str
+    calendar_id: str
+    hourly_rate: float
+    access_role: str
+    status: TutorStatus
+    tutor_timezone: str = "Asia/Karachi"
+    tutor_email: Optional[str] = None
+    tutor_phone: Optional[str] = None
+    discord_channel_id: Optional[str] = None
+    discord_onboarding_message_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime

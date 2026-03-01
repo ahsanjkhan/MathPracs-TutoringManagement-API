@@ -1,7 +1,9 @@
 from typing import Optional
+from boto3.dynamodb.conditions import Key
 from src.config import get_settings
-from src.functions import dynamodb
-from src.models.student_model import Student, StudentUpdate
+from src.functions import dynamodb, session_functions
+from src.functions.google_docs import extract_student_name
+from src.models.student_model import Student, StudentUpdate, StudentPatch
 
 settings = get_settings()
 
@@ -9,6 +11,29 @@ settings = get_settings()
 def normalize_student_name(name: str) -> str:
     """Normalize student name to title case for consistent lookups."""
     return name.strip().title()
+
+
+def get_all_students() -> list[Student]:
+    """Get all students from the database."""
+    items = dynamodb.scan_table(settings.students_table)
+    return [Student.from_dynamodb(item) for item in items]
+
+
+def get_students_by_tutor(tutor_id: str) -> list[Student]:
+    """Get all students associated with a specific tutor via their sessions."""
+    sessions = session_functions.get_sessions_by_tutor(tutor_id)
+    student_names = set()
+    for s in sessions:
+        name = extract_student_name(s.summary)
+        if name:
+            student_names.add(normalize_student_name(name))
+
+    students = []
+    for name in student_names:
+        student = get_student(name)
+        if student:
+            students.append(student)
+    return students
 
 
 def get_student(student_name: str) -> Optional[Student]:
@@ -50,8 +75,6 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
         update_data["number4"] = {"phoneNumber": updates.number_4.phone_number, "smsEnabled": updates.number_4.sms_enabled}
     if updates.number_5 is not None:
         update_data["number5"] = {"phoneNumber": updates.number_5.phone_number, "smsEnabled": updates.number_5.sms_enabled}
-    if updates.hourly_price_standard is not None:
-        update_data["hourlyPriceStandard"] = updates.hourly_price_standard
     if updates.hourly_price_1 is not None:
         update_data["hourlyPrice1"] = updates.hourly_price_1
     if updates.hourly_price_2 is not None:
@@ -78,4 +101,45 @@ def update_student(student_name: str, updates: StudentUpdate) -> Optional[Studen
     return Student.from_dynamodb(updated_item)
 
 
+def patch_student(student_name: str, patch: StudentPatch) -> Optional[Student]:
+    """Patches the student record using StudentPatch model (only post-initialization fields)."""
+    normalized_name = normalize_student_name(student_name)
+    existing = get_student(normalized_name)
+    if not existing:
+        return None
 
+    update_data = {}
+    if patch.student_timezone is not None:
+        update_data["studentTimezone"] = patch.student_timezone
+    if patch.student_email is not None:
+        update_data["studentEmail"] = patch.student_email
+    if patch.number_1 is not None:
+        update_data["number1"] = {"phoneNumber": patch.number_1.phone_number, "smsEnabled": patch.number_1.sms_enabled}
+    if patch.number_2 is not None:
+        update_data["number2"] = {"phoneNumber": patch.number_2.phone_number, "smsEnabled": patch.number_2.sms_enabled}
+    if patch.number_3 is not None:
+        update_data["number3"] = {"phoneNumber": patch.number_3.phone_number, "smsEnabled": patch.number_3.sms_enabled}
+    if patch.hourly_price_1 is not None:
+        update_data["hourlyPrice1"] = patch.hourly_price_1
+    if patch.hourly_price_2 is not None:
+        update_data["hourlyPrice2"] = patch.hourly_price_2
+    if patch.hourly_price_3 is not None:
+        update_data["hourlyPrice3"] = patch.hourly_price_3
+    if patch.hourly_price_4 is not None:
+        update_data["hourlyPrice4"] = patch.hourly_price_4
+    if patch.hourly_price_5 is not None:
+        update_data["hourlyPrice5"] = patch.hourly_price_5
+    if patch.hourly_price_no_show is not None:
+        update_data["hourlyPriceNoShow"] = patch.hourly_price_no_show
+    if patch.payment_collected_by is not None:
+        update_data["paymentCollectedBy"] = patch.payment_collected_by.value
+
+    if not update_data:
+        return existing
+
+    updated_item = dynamodb.update_item(
+        settings.students_table,
+        {"studentName": normalized_name},
+        update_data,
+    )
+    return Student.from_dynamodb(updated_item)
