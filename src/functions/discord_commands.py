@@ -25,7 +25,7 @@ from src.functions import (
 )
 from src.functions.google_docs import extract_student_name
 from src.models.tutor_model import TutorStatus, TutorUpdate
-from src.models.student_model import StudentUpdate, StudentPatch, PaymentCollector
+from src.models.student_model import StudentUpdate, PaymentCollector
 from src.models.session_model import SessionStatus
 
 logger = logging.getLogger(__name__)
@@ -659,9 +659,9 @@ def handle_update_student(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
-    # Build current data dynamically from StudentPatch fields
+    # Build current data dynamically from StudentUpdate fields
     current_data = {}
-    for field_name in StudentPatch.model_fields:
+    for field_name in StudentUpdate.model_fields:
         value = getattr(student, field_name, None)
         if hasattr(value, "value"):  # enum → string
             value = value.value
