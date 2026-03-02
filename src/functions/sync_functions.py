@@ -124,20 +124,20 @@ def sync_calendar_list() -> dict:
             created += 1
 
             # Discord channel creation for new tutors
-            channel_id = discord_utils.create_tutor_channel(display_name)
+            channel_id = discord_utils.create_tutor_channel(tutor.tutor_name)
             if channel_id:
-                logger.info(f"Created Discord channel for tutor: {display_name}")
+                logger.info(f"Created Discord channel for tutor: {tutor.tutor_name}")
                 onboarding_msg_id = discord_utils.send_onboarding_message(channel_id, display_name)
                 tutor_functions.set_tutor_discord_channel(tutor.tutor_id, channel_id, onboarding_msg_id)
 
-            dropbox_channel_id = discord_utils.create_dropbox_channel(display_name)
+            dropbox_channel_id = discord_utils.create_dropbox_channel(tutor.tutor_name)
             if dropbox_channel_id:
-                logger.info(f"Created Dropbox Discord channel for tutor: {display_name}")
+                logger.info(f"Created Dropbox Discord channel for tutor: {tutor.tutor_name}")
                 tutor_functions.set_tutor_dropbox_channel(tutor.tutor_id, dropbox_channel_id)
 
-            feedback_channel_id = discord_utils.create_feedback_channel(display_name)
+            feedback_channel_id = discord_utils.create_feedback_channel(tutor.tutor_name)
             if feedback_channel_id:
-                logger.info(f"Created feedback Discord channel for tutor: {display_name}")
+                logger.info(f"Created feedback Discord channel for tutor: {tutor.tutor_name}")
                 tutor_functions.set_tutor_feedback_channel(tutor.tutor_id, feedback_channel_id)
 
     if not calendars:
@@ -153,7 +153,7 @@ def sync_calendar_list() -> dict:
     new_state = CalendarListState(
         sync_type=CALENDAR_LIST_SYNC_TYPE,
         sync_token=final_token,
-        last_sync_at=datetime.utcnow(),
+        last_sync_at=datetime.now(timezone.utc),
     )
     save_sync_state(new_state)
 

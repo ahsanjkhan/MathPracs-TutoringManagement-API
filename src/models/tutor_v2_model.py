@@ -104,14 +104,17 @@ class TutorMetadataV2(BaseModel):
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
 
+
 class TutorV2Update(BaseModel):
     display_name: Optional[str] = None
     tutor_name: Optional[str] = None
     status: Optional[TutorStatus] = None
 
+
 class TutorMetadataV2UpdateNameOnly(BaseModel):
     display_name: Optional[str] = None
     tutor_name: Optional[str] = None
+
 
 class TutorMetadataV2Update(BaseModel):
     hourly_rate: Optional[float] = None

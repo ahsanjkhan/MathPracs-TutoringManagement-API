@@ -64,10 +64,16 @@ def invoke_discord_task(command: str, interaction: dict, application_id: str) ->
         logger.error(f"Failed to invoke async Discord task for '{command}': {e}")
 
 
+def normalize_tutor_name(name: str) -> str:
+    """Normalize a name for use in a Discord channel name (lowercase, alphanumeric and hyphens only)."""
+    return re.sub(r'[^a-z0-9-]', '', name.strip().lower()) if name else "unknown"
+
+
 def create_tutor_channel(tutor_name: str) -> str | None:
     """
     Create a private Discord channel for a tutor.
     Channel name format: tutor-<name> (e.g., tutor-mustafa)
+    Expects tutor_name to already be a clean first name (e.g. "mustafa").
     Returns the channel ID if created, None if failed.
     """
     creds = get_discord_credentials()
@@ -79,10 +85,7 @@ def create_tutor_channel(tutor_name: str) -> str | None:
         logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
         return None
 
-    # Clean tutor name for channel (lowercase, no spaces, alphanumeric only)
-    # e.g., "Mustafa Tutoring Schedule" -> "mustafa"
-    clean_name = tutor_name.lower().split()[0] if tutor_name else "unknown"
-    clean_name = re.sub(r'[^a-z0-9-]', '', clean_name)
+    clean_name = normalize_tutor_name(tutor_name)
     channel_name = f"tutor-{clean_name}"
 
     # Build permission overwrites
@@ -149,8 +152,7 @@ def create_dropbox_channel(tutor_name: str) -> str | None:
         logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
         return None
 
-    clean_name = tutor_name.lower().split()[0] if tutor_name else "unknown"
-    clean_name = re.sub(r'[^a-z0-9-]', '', clean_name)
+    clean_name = normalize_tutor_name(tutor_name)
     channel_name = f"dropbox-{clean_name}"
 
     permission_overwrites = [
@@ -213,8 +215,7 @@ def create_feedback_channel(tutor_name: str) -> str | None:
         logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
         return None
 
-    clean_name = tutor_name.lower().split()[0] if tutor_name else "unknown"
-    clean_name = re.sub(r'[^a-z0-9-]', '', clean_name)
+    clean_name = normalize_tutor_name(tutor_name)
     channel_name = f"feedback-{clean_name}"
 
     permission_overwrites = [

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from src.config import get_settings
@@ -78,7 +78,7 @@ def update_student_metadata(student_name: str, updates: StudentMetadataV2Update)
     if not update_data:
         return get_student_metadata(normalized_name)
 
-    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     updated_item = dynamodb.update_item(
         settings.students_metadata_table,
         {"studentName": normalized_name},

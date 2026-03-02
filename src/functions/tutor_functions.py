@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from boto3.dynamodb.conditions import Key, Attr
 from src.config import get_settings
@@ -111,7 +111,7 @@ def set_tutor_discord_channel(tutor_id: str, channel_id: str, onboarding_msg_id:
         return False
     update_data = {
         "discordChannelId": channel_id,
-        "updatedAt": datetime.utcnow().isoformat(),
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
     if onboarding_msg_id:
         update_data["discordOnboardingMessageId"] = onboarding_msg_id
@@ -127,7 +127,7 @@ def set_tutor_feedback_channel(tutor_id: str, channel_id: str) -> bool:
     dynamodb.update_item(
         settings.tutors_table,
         {"tutorId": tutor_id},
-        {"feedbackDiscordChannelId": channel_id, "updatedAt": datetime.utcnow().isoformat()},
+        {"feedbackDiscordChannelId": channel_id, "updatedAt": datetime.now(timezone.utc).isoformat()},
     )
     return True
 
@@ -140,7 +140,7 @@ def set_tutor_dropbox_channel(tutor_id: str, channel_id: str) -> bool:
     dynamodb.update_item(
         settings.tutors_table,
         {"tutorId": tutor_id},
-        {"dropboxDiscordChannelId": channel_id, "updatedAt": datetime.utcnow().isoformat()},
+        {"dropboxDiscordChannelId": channel_id, "updatedAt": datetime.now(timezone.utc).isoformat()},
     )
     return True
 
@@ -163,7 +163,7 @@ def update_tutor(tutor_id: str, updates: TutorV2Update) -> Optional[TutorV2]:
     if not update_data:
         return existing
 
-    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     dynamodb.update_item(settings.tutors_table, {"tutorId": tutor_id}, update_data)
     return get_tutor(tutor_id)
 
@@ -183,7 +183,7 @@ def update_tutor_metadata_name(tutor_id: str, updates: TutorMetadataV2UpdateName
     if not update_data:
         return get_tutor_metadata(tutor_id)
 
-    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     dynamodb.update_item(settings.tutors_metadata_table, {"tutorId": tutor_id}, update_data)
     return get_tutor_metadata(tutor_id)
 
@@ -207,7 +207,7 @@ def update_tutor_metadata(tutor_id: str, updates: TutorMetadataV2Update) -> Opti
     if not update_data:
         return get_tutor_metadata(tutor_id)
 
-    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     dynamodb.update_item(settings.tutors_metadata_table, {"tutorId": tutor_id}, update_data)
     return get_tutor_metadata(tutor_id)
 
@@ -220,7 +220,7 @@ def delete_tutor(tutor_id: str) -> bool:
     dynamodb.update_item(
         settings.tutors_table,
         {"tutorId": tutor_id},
-        {"status": TutorStatus.INACTIVE.value, "updatedAt": datetime.utcnow().isoformat()},
+        {"status": TutorStatus.INACTIVE.value, "updatedAt": datetime.now(timezone.utc).isoformat()},
     )
     return True
 
