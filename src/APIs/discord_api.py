@@ -87,18 +87,14 @@ async def discord_interactions(request: Request):
             return discord_commands.handle_help(interaction)
         elif command_name == "ping_bot":
             return discord_commands.handle_ping_bot(interaction)
-        elif command_name == "sessions":
-            discord_utils.invoke_discord_task("sessions", interaction, application_id)
+        elif command_name == "my_sessions":
+            discord_utils.invoke_discord_task("my_sessions", interaction, application_id)
             return DEFERRED
-        elif command_name == "earnings":
-            discord_utils.invoke_discord_task("earnings", interaction, application_id)
+        elif command_name == "my_earnings":
+            discord_utils.invoke_discord_task("my_earnings", interaction, application_id)
             return DEFERRED
         elif command_name == "refresh_commands":
             return discord_commands.handle_refresh_commands(interaction)
-        elif command_name == "manual_sync":
-            return discord_commands.handle_manual_sync(interaction, application_id)
-        elif command_name == "active_tutors":
-            return discord_commands.handle_active_tutors(interaction)
         elif command_name == "get_tutor":
             return discord_commands.handle_get_tutor(interaction)
         elif command_name == "get_student":
@@ -107,15 +103,17 @@ async def discord_interactions(request: Request):
             return discord_commands.handle_update_tutor(interaction)
         elif command_name == "update_student":
             return discord_commands.handle_update_student(interaction)
-        elif command_name == "tutor_monthly_payments":
-            discord_utils.invoke_discord_task("tutor_monthly_payments", interaction, application_id)
+        elif command_name == "earnings_all_tutors":
+            discord_utils.invoke_discord_task("earnings_all_tutors", interaction, application_id)
             return DEFERRED
-        elif command_name == "links_student":
-            discord_utils.invoke_discord_task("links_student", interaction, application_id)
+        elif command_name == "student_links":
+            discord_utils.invoke_discord_task("student_links", interaction, application_id)
             return DEFERRED
         elif command_name == "hours_tutored_chart":
             discord_utils.invoke_discord_task("hours_tutored_chart", interaction, application_id)
             return DEFERRED
+        elif command_name == "record_payment":
+            return discord_commands.handle_record_payment(interaction)
         else:
             return {
                 "type": 4,

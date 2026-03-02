@@ -434,23 +434,21 @@ def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
 def handle_help(interaction: dict) -> dict:
     """Handle /help command — lists all commands grouped by role."""
     tutor_commands = [
-        ("sessions",         "View your scheduled sessions for the next 24 hours"),
-        ("earnings",         "View your earnings for the current month"),
-        ("links_student",    "Get meeting, upload, and file request links for a student"),
+        ("my_sessions",      "View your scheduled sessions for the next 24 hours"),
+        ("my_earnings",      "View your earnings for the current month"),
+        ("student_links",    "Get meeting, upload, and file request links for a student"),
         ("refresh_commands", "Update your pinned commands message"),
     ]
     admin_commands = [
-        ("ping_bot",               "Test if the bot is connected"),
-        ("active_tutors",          "List all active tutors"),
-        ("get_tutor",              "Get details for a tutor"),
-        ("get_student",            "Get details for a student"),
-        ("update_tutor",           "Update tutor details"),
-        ("update_student",         "Update student details"),
-        ("record_payment",         "Record a payment transaction for a student"),
-        ("manual_sync",            "Manually trigger a calendar sync"),
-        ("tutor_monthly_payments", "View total earnings across all tutors for the current month"),
-        ("hours_tutored_chart",    "Bar chart of total hours tutored per month"),
-        ("help",                   "Show all commands and descriptions"),
+        ("ping_bot",             "Test if the bot is connected"),
+        ("get_tutor",            "Get details for a tutor"),
+        ("get_student",          "Get details for a student"),
+        ("update_tutor",         "Update tutor details"),
+        ("update_student",       "Update student details"),
+        ("record_payment",       "Record a payment transaction for a student"),
+        ("earnings_all_tutors",  "View total earnings across all tutors for the current month"),
+        ("hours_tutored_chart",  "Bar chart of total hours tutored per month"),
+        ("help",                 "Show all commands and descriptions"),
     ]
 
     tutor_lines  = "\n".join(f"`/{cmd}` — {desc}" for cmd, desc in tutor_commands)

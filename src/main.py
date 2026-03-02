@@ -18,11 +18,11 @@ logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.WARNING)
 
 
 _DISCORD_TASK_HANDLERS = {
-    "sessions":             discord_commands.handle_sessions,
-    "earnings":             discord_commands.handle_earnings,
-    "links_student":        discord_commands.handle_links_student,
-    "tutor_monthly_payments": discord_commands.handle_total_earnings,
-    "hours_tutored_chart":  discord_commands.handle_hours_tutored_chart,
+    "my_sessions":        discord_commands.handle_sessions,
+    "my_earnings":        discord_commands.handle_earnings,
+    "student_links":      discord_commands.handle_links_student,
+    "earnings_all_tutors": discord_commands.handle_total_earnings,
+    "hours_tutored_chart": discord_commands.handle_hours_tutored_chart,
 }
 
 

@@ -210,9 +210,9 @@ def notify_homework_upload(student_name: str, file_name: str, tutor_discord_chan
 def get_onboarding_message_content(tutor_name: str) -> str:
     """Get the onboarding message content. Commands list is dynamically generated from TUTOR_COMMANDS."""
     TUTOR_COMMANDS = {
-        "sessions": "View your scheduled sessions for the next 24 hours",
-        "earnings": "View your earnings for the current month",
-        "links_student": "Get meeting, upload, and file request links for a student",
+        "my_sessions": "View your scheduled sessions for the next 24 hours",
+        "my_earnings": "View your earnings for the current month",
+        "student_links": "Get meeting, upload, and file request links for a student",
         "refresh_commands": "Update the pinned message with latest commands",
     }
 
