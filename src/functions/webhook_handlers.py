@@ -58,15 +58,15 @@ def process_dropbox_webhook() -> dict:
             logger.warning(f"Tutor not found for student: {student_name}")
             continue
 
-        if not tutor.discord_channel_id:
-            logger.warning(f"Tutor {tutor.display_name} has no Discord channel configured")
+        if not tutor.dropbox_discord_channel_id:
+            logger.warning(f"Tutor {tutor.display_name} has no Dropbox Discord channel configured")
             continue
 
         # Send notification
         success = discord_utils.notify_homework_upload(
             student_name=student_name,
             file_name=file_name,
-            tutor_discord_channel_id=tutor.discord_channel_id
+            tutor_discord_channel_id=tutor.dropbox_discord_channel_id
         )
 
         if success:

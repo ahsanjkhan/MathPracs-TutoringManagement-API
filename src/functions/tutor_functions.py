@@ -119,6 +119,32 @@ def set_tutor_discord_channel(tutor_id: str, channel_id: str, onboarding_msg_id:
     return True
 
 
+def set_tutor_feedback_channel(tutor_id: str, channel_id: str) -> bool:
+    """Set the feedback Discord channel for a tutor."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return False
+    dynamodb.update_item(
+        settings.tutors_table,
+        {"tutorId": tutor_id},
+        {"feedbackDiscordChannelId": channel_id, "updatedAt": datetime.utcnow().isoformat()},
+    )
+    return True
+
+
+def set_tutor_dropbox_channel(tutor_id: str, channel_id: str) -> bool:
+    """Set the dropbox notification Discord channel for a tutor."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return False
+    dynamodb.update_item(
+        settings.tutors_table,
+        {"tutorId": tutor_id},
+        {"dropboxDiscordChannelId": channel_id, "updatedAt": datetime.utcnow().isoformat()},
+    )
+    return True
+
+
 def update_tutor(tutor_id: str, updates: TutorV2Update) -> Optional[TutorV2]:
     """Update operational tutor fields in TutorsV2 (display_name, tutor_name, status).
     Used when refreshing tutors from G Cal or when sync notices that the calendar name has changed"""

@@ -123,13 +123,22 @@ def sync_calendar_list() -> dict:
             )
             created += 1
 
-            # Discord channel creation for new tutors (comment out lines 111-120 to disable)
+            # Discord channel creation for new tutors
             channel_id = discord_utils.create_tutor_channel(display_name)
             if channel_id:
                 logger.info(f"Created Discord channel for tutor: {display_name}")
-                # Send onboarding message and get its ID
                 onboarding_msg_id = discord_utils.send_onboarding_message(channel_id, display_name)
                 tutor_functions.set_tutor_discord_channel(tutor.tutor_id, channel_id, onboarding_msg_id)
+
+            dropbox_channel_id = discord_utils.create_dropbox_channel(display_name)
+            if dropbox_channel_id:
+                logger.info(f"Created Dropbox Discord channel for tutor: {display_name}")
+                tutor_functions.set_tutor_dropbox_channel(tutor.tutor_id, dropbox_channel_id)
+
+            feedback_channel_id = discord_utils.create_feedback_channel(display_name)
+            if feedback_channel_id:
+                logger.info(f"Created feedback Discord channel for tutor: {display_name}")
+                tutor_functions.set_tutor_feedback_channel(tutor.tutor_id, feedback_channel_id)
 
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
@@ -267,8 +276,8 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                     # Check if session just changed from scheduled to completed
                     if (existing.status == SessionStatus.SCHEDULED and
                         out.status == SessionStatus.COMPLETED and
-                        tutor.discord_channel_id):
-                        # Send feedback request to tutor's channel
+                        tutor.feedback_discord_channel_id):
+                        # Send feedback request to tutor's feedback channel
                         student_name = google_docs.extract_student_name(s.summary) or "Unknown"
                         tutor_name = tutor.tutor_name
                         # Format session time in tutor's timezone
@@ -279,7 +288,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                         session_time = local_time.strftime("%b %d, %Y at %I:%M %p")
 
                         discord_utils.send_feedback_request(
-                            channel_id=tutor.discord_channel_id,
+                            channel_id=tutor.feedback_discord_channel_id,
                             session_id=s.session_id,
                             student_name=student_name,
                             tutor_name=tutor_name,

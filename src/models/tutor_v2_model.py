@@ -20,6 +20,8 @@ class TutorV2(BaseModel):
     status: TutorStatus = TutorStatus.ACTIVE
     discord_channel_id: Optional[str] = None
     discord_onboarding_message_id: Optional[str] = None
+    dropbox_discord_channel_id: Optional[str] = None
+    feedback_discord_channel_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -38,6 +40,10 @@ class TutorV2(BaseModel):
             data["discordChannelId"] = self.discord_channel_id
         if self.discord_onboarding_message_id:
             data["discordOnboardingMessageId"] = self.discord_onboarding_message_id
+        if self.dropbox_discord_channel_id:
+            data["dropboxDiscordChannelId"] = self.dropbox_discord_channel_id
+        if self.feedback_discord_channel_id:
+            data["feedbackDiscordChannelId"] = self.feedback_discord_channel_id
         return data
 
     @classmethod
@@ -52,6 +58,8 @@ class TutorV2(BaseModel):
             status=TutorStatus(item["status"]),
             discord_channel_id=item.get("discordChannelId"),
             discord_onboarding_message_id=item.get("discordOnboardingMessageId"),
+            dropbox_discord_channel_id=item.get("dropboxDiscordChannelId"),
+            feedback_discord_channel_id=item.get("feedbackDiscordChannelId"),
             created_at=datetime.fromisoformat(item["createdAt"]),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
