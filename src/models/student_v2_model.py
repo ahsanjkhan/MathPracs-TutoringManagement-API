@@ -142,7 +142,6 @@ class StudentMetadataV2Update(BaseModel):
     phone_numbers: Optional[dict] = None
     no_show_custom_rate: Optional[float] = None
     payment_collected_by: Optional[str] = None
-    discord_channel_reminder_id: Optional[str] = None
 
 class PaymentRecord(BaseModel):
     """Input model for recording a payment."""
