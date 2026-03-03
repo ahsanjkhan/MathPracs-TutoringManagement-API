@@ -859,14 +859,12 @@ def handle_student_modal_submit(interaction: dict) -> dict:
             return {"type": 4, "data": {"content": f"Invalid payment_collected_by. Must be one of: {', '.join([e.value for e in PaymentCollector])}", "flags": 64}}
 
         if payment_collected_by:
-            discord_payment_channel_id = discord_utils.get_discord_payment_channel_id(payment_collected_by)
             meta_update = StudentMetadataV2Update(
                 hourly_pricing=data.get("hourly_pricing"),
                 phone_numbers=data.get("phone_numbers"),
                 student_timezone=data.get("student_timezone"),
                 no_show_custom_rate=data.get("no_show_custom_rate"),
                 payment_collected_by=payment_collected_by,
-                discord_channel_reminder_id=discord_payment_channel_id,
             )
         else:
             meta_update = StudentMetadataV2Update(

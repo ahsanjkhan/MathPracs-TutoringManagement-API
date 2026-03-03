@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from src.config import get_settings
-from src.functions import dynamodb, session_functions
+from src.functions import dynamodb, session_functions, discord_utils
 from src.functions.google_docs import extract_student_name
 from src.models.student_v2_model import StudentV2, StudentMetadataV2, StudentMetadataV2Update
 
@@ -74,6 +74,7 @@ def update_student_metadata(student_name: str, updates: StudentMetadataV2Update)
         update_data["noShowCustomRate"] = updates.no_show_custom_rate
     if updates.payment_collected_by is not None:
         update_data["paymentCollectedBy"] = updates.payment_collected_by
+        update_data["discordChannelReminderId"] = discord_utils.get_discord_payment_channel_id(updates.payment_collected_by)
 
     if not update_data:
         return get_student_metadata(normalized_name)
