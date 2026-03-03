@@ -101,7 +101,7 @@ def patch_session(tutor_id: str, session_id: str, updates: SessionUpdate) -> Opt
     if not update_data:
         return existing
 
-    update_data["updatedAt"] = datetime.utcnow().isoformat()
+    update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     updated_item = dynamodb.update_item(
         settings.sessions_table,
         {"tutorId": tutor_id, "sessionId": session_id},

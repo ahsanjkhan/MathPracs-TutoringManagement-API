@@ -64,10 +64,16 @@ def invoke_discord_task(command: str, interaction: dict, application_id: str) ->
         logger.error(f"Failed to invoke async Discord task for '{command}': {e}")
 
 
+def normalize_tutor_name(name: str) -> str:
+    """Normalize a name for use in a Discord channel name (lowercase, alphanumeric and hyphens only)."""
+    return re.sub(r'[^a-z0-9-]', '', name.strip().lower()) if name else "unknown"
+
+
 def create_tutor_channel(tutor_name: str) -> str | None:
     """
     Create a private Discord channel for a tutor.
     Channel name format: tutor-<name> (e.g., tutor-mustafa)
+    Expects tutor_name to already be a clean first name (e.g. "mustafa").
     Returns the channel ID if created, None if failed.
     """
     creds = get_discord_credentials()
@@ -79,10 +85,7 @@ def create_tutor_channel(tutor_name: str) -> str | None:
         logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
         return None
 
-    # Clean tutor name for channel (lowercase, no spaces, alphanumeric only)
-    # e.g., "Mustafa Tutoring Schedule" -> "mustafa"
-    clean_name = tutor_name.lower().split()[0] if tutor_name else "unknown"
-    clean_name = re.sub(r'[^a-z0-9-]', '', clean_name)
+    clean_name = normalize_tutor_name(tutor_name)
     channel_name = f"tutor-{clean_name}"
 
     # Build permission overwrites
@@ -131,6 +134,132 @@ def create_tutor_channel(tutor_name: str) -> str | None:
 
     except Exception as e:
         logger.error(f"Error creating Discord channel: {e}")
+        return None
+
+
+def create_dropbox_channel(tutor_name: str) -> str | None:
+    """
+    Create a private Discord channel for Dropbox notifications for a tutor.
+    Channel name format: dropbox-<name> (e.g., dropbox-mustafa)
+    Returns the channel ID if created, None if failed.
+    """
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+    guild_id = creds.get("guild_id")
+    bot_id = creds.get("bot_id")
+
+    if not bot_token or not guild_id:
+        logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
+        return None
+
+    clean_name = normalize_tutor_name(tutor_name)
+    channel_name = f"dropbox-{clean_name}"
+
+    permission_overwrites = [
+        {
+            "id": guild_id,
+            "type": 0,
+            "deny": "1024"
+        }
+    ]
+
+    if bot_id:
+        permission_overwrites.append({
+            "id": bot_id,
+            "type": 1,
+            "allow": "1024"
+        })
+
+    try:
+        response = httpx.post(
+            f"https://discord.com/api/v10/guilds/{guild_id}/channels",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "name": channel_name,
+                "type": 0,
+                "topic": f"Dropbox upload notifications for {tutor_name}",
+                "parent_id": "1477999257318457436",
+                "permission_overwrites": permission_overwrites
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 201:
+            channel_id = response.json().get("id")
+            logger.info(f"Created Dropbox Discord channel #{channel_name} (ID: {channel_id})")
+            return channel_id
+        else:
+            logger.error(f"Failed to create Dropbox Discord channel: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error creating Dropbox Discord channel: {e}")
+        return None
+
+
+def create_feedback_channel(tutor_name: str) -> str | None:
+    """
+    Create a private Discord channel for session feedback for a tutor.
+    Channel name format: feedback-<name> (e.g., feedback-mustafa)
+    Returns the channel ID if created, None if failed.
+    """
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+    guild_id = creds.get("guild_id")
+    bot_id = creds.get("bot_id")
+
+    if not bot_token or not guild_id:
+        logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
+        return None
+
+    clean_name = normalize_tutor_name(tutor_name)
+    channel_name = f"feedback-{clean_name}"
+
+    permission_overwrites = [
+        {
+            "id": guild_id,
+            "type": 0,
+            "deny": "1024"
+        }
+    ]
+
+    if bot_id:
+        permission_overwrites.append({
+            "id": bot_id,
+            "type": 1,
+            "allow": "1024"
+        })
+
+    try:
+        response = httpx.post(
+            f"https://discord.com/api/v10/guilds/{guild_id}/channels",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "name": channel_name,
+                "type": 0,
+                "topic": f"Session feedback forms for {tutor_name}",
+                "parent_id": "1478000275708186694",
+                "permission_overwrites": permission_overwrites
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 201:
+            channel_id = response.json().get("id")
+            logger.info(f"Created feedback Discord channel #{channel_name} (ID: {channel_id})")
+            return channel_id
+        else:
+            logger.error(f"Failed to create feedback Discord channel: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error creating feedback Discord channel: {e}")
         return None
 
 
