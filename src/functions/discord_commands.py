@@ -438,6 +438,189 @@ def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
     )
 
 
+# Students whose profit goes 100% to Muaz (not split with Ahsan)
+_MUAZ_ONLY_STUDENTS = {"Felix", "Jay"}
+
+
+def _is_demo(s) -> bool:
+    return bool(re.search(r"demo", s.summary, re.IGNORECASE))
+
+
+def _is_no_show(s) -> bool:
+    return bool(re.search(r"\(no-show\)", s.summary, re.IGNORECASE))
+
+
+def _compute_monthly_student_profits(month_start: datetime, month_end: datetime, central_tz) -> list[dict]:
+    """
+    Returns a list of per-student profit dicts for the given month.
+    Revenue/cost per session type:
+      - Regular:  revenue = hours × weekly_tier_rate,       cost = hours × tutor_rate
+      - No-show:  revenue = hours × weekly_tier_rate × 0.5, cost = hours × tutor_rate
+      - Demo:     revenue = $0,                             cost = hours × tutor_rate
+    Split (Felix/Jay vs 50/50) is applied in _handle_profit, not here.
+    """
+    student_meta_map = {m.student_name: m for m in student_functions.get_all_student_metadata()}
+    tutor_meta_map = tutor_functions.get_all_tutors_metadata()
+
+    all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
+
+    # Group completed month sessions by student
+    student_sessions: dict = {}
+    for s in all_sessions:
+        s_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+        if not (month_start <= s_start.astimezone(central_tz) <= month_end):
+            continue
+        raw_name = extract_student_name(s.summary)
+        if not raw_name:
+            continue
+        normalized = student_functions.normalize_student_name(raw_name)
+        student_sessions.setdefault(normalized, []).append(s)
+
+    results = []
+    for student_name, sessions in sorted(student_sessions.items()):
+        meta = student_meta_map.get(student_name)
+        hourly_pricing = (meta.hourly_pricing if meta else None) or {}
+
+        # All sessions count toward the weekly pricing tier (including no-shows and demos)
+        weeks: dict = {}
+        for s in sessions:
+            s_start = s.start if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc)
+            local_date = s_start.astimezone(central_tz).date()
+            days_since_sunday = (local_date.weekday() + 1) % 7
+            week_key = local_date - timedelta(days=days_since_sunday)
+            weeks.setdefault(week_key, []).append(s)
+
+        # Build per-session lookup: session_id -> (student_rate, tutor_rate, hours)
+        session_info: dict = {}
+        for week_sessions in weeks.values():
+            tier = str(min(len(week_sessions), 5))
+            rate = float(hourly_pricing.get(tier, 0))
+            for s in week_sessions:
+                hours = (s.end - s.start).total_seconds() / 3600
+                tutor_meta = tutor_meta_map.get(s.tutor_id)
+                tutor_rate = float(tutor_meta.hourly_rate) if tutor_meta and tutor_meta.hourly_rate else 0.0
+                session_info[s.session_id] = (rate, tutor_rate, hours)
+
+        reg_rev = reg_cost = 0.0
+        ns_rev  = ns_cost  = 0.0
+        demo_cost = 0.0
+        reg_count = ns_count = demo_count = 0
+
+        for s in sessions:
+            rate, tutor_rate, hours = session_info[s.session_id]
+            if _is_demo(s):
+                demo_cost  += hours * tutor_rate
+                demo_count += 1
+            elif _is_no_show(s):
+                ns_rev  += hours * rate * 0.5
+                ns_cost += hours * tutor_rate
+                ns_count += 1
+            else:
+                reg_rev  += hours * rate
+                reg_cost += hours * tutor_rate
+                reg_count += 1
+
+        results.append({
+            "student_name": student_name,
+            "reg_count": reg_count, "reg_rev": reg_rev, "reg_cost": reg_cost,
+            "ns_count":  ns_count,  "ns_rev":  ns_rev,  "ns_cost":  ns_cost,
+            "demo_count": demo_count, "demo_cost": demo_cost,
+        })
+
+    return results
+
+
+def _handle_profit(recipient: str, interaction: dict, application_id: str) -> None:
+    """
+    Profit report for 'muaz' or 'ahsan'.
+
+    Split rule is based solely on the student, not session type:
+      - Felix / Jay → 100% Muaz, 0% Ahsan
+      - All others  → 50/50
+
+    Revenue/cost per session type:
+      - Regular:  revenue = hours × weekly_tier_rate,       cost = hours × tutor_rate
+      - No-show:  revenue = hours × weekly_tier_rate × 0.5, cost = hours × tutor_rate
+      - Demo:     revenue = $0,                             cost = hours × tutor_rate
+    """
+    token = interaction.get("token")
+    central_tz = ZoneInfo("America/Chicago")
+    now_central = datetime.now(central_tz)
+    year = now_central.year
+    month = now_central.month
+
+    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=central_tz)
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
+
+    rows = _compute_monthly_student_profits(month_start, month_end, central_tz)
+
+    if not rows:
+        send_followup(application_id, token, content=f"No completed sessions found for {now_central.strftime('%B %Y')}.")
+        return
+
+    total_share = 0.0
+    lines = []
+
+    for row in rows:
+        name = row["student_name"]
+        muaz_only = name in _MUAZ_ONLY_STUDENTS
+
+        if muaz_only and recipient == "ahsan":
+            continue
+
+        total_rev  = row["reg_rev"]  + row["ns_rev"]
+        total_cost = row["reg_cost"] + row["ns_cost"] + row["demo_cost"]
+        gross_profit = total_rev - total_cost
+
+        split = 1.0 if muaz_only else 0.5
+        share = gross_profit * split
+        total_share += share
+
+        # Build session count summary
+        parts = []
+        if row["reg_count"]:
+            parts.append(f"{row['reg_count']} reg")
+        if row["ns_count"]:
+            parts.append(f"{row['ns_count']} no-show")
+        if row["demo_count"]:
+            parts.append(f"{row['demo_count']} demo")
+        session_summary = ", ".join(parts)
+
+        split_label = "100%" if muaz_only else "50%"
+        lines.append(
+            f"• **{name}** — {session_summary} | "
+            f"Rev: ${total_rev:.2f} | Cost: ${total_cost:.2f} | "
+            f"Profit: ${gross_profit:.2f} → **Your share: ${share:.2f}** ({split_label})"
+        )
+
+    month_name = now_central.strftime("%B %Y")
+    name_label = recipient.capitalize()
+
+    if not lines:
+        content = f"No sessions to report for {name_label} in {month_name}."
+    else:
+        breakdown = "\n".join(lines)
+        content = (
+            f"**Profit Report — {name_label} — {month_name}**\n\n"
+            f"{breakdown}\n\n"
+            f"**Net Profit ({name_label}): ${total_share:.2f}**\n\n"
+            f"_Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"
+        )
+
+    send_followup(application_id, token, content=content)
+
+
+def handle_profit_muaz(interaction: dict, application_id: str) -> None:
+    """Handle /profit_muaz command."""
+    _handle_profit("muaz", interaction, application_id)
+
+
+def handle_profit_ahsan(interaction: dict, application_id: str) -> None:
+    """Handle /profit_ahsan command."""
+    _handle_profit("ahsan", interaction, application_id)
+
+
 def handle_help(interaction: dict) -> dict:
     """Handle /help command — lists all commands grouped by role."""
     tutor_commands = [
@@ -455,6 +638,8 @@ def handle_help(interaction: dict) -> dict:
         ("record_payment",       "Record a payment transaction for a student"),
         ("earnings_all_tutors",  "View total earnings across all tutors for the current month"),
         ("hours_tutored_chart",  "Bar chart of total hours tutored per month"),
+        ("profit_muaz",          "Profit report for Muaz's students (revenue minus tutor cost)"),
+        ("profit_ahsan",         "Profit report for Ahsan's students (revenue minus tutor cost)"),
         ("help",                 "Show all commands and descriptions"),
     ]
 

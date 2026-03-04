@@ -23,6 +23,8 @@ _DISCORD_TASK_HANDLERS = {
     "student_links":      discord_commands.handle_links_student,
     "earnings_all_tutors": discord_commands.handle_total_earnings,
     "hours_tutored_chart": discord_commands.handle_hours_tutored_chart,
+    "profit_muaz":        discord_commands.handle_profit_muaz,
+    "profit_ahsan":       discord_commands.handle_profit_ahsan,
 }
 
 
