@@ -27,8 +27,15 @@ from src.models.session_model import SessionStatus
 from src.models.student_v2_model import StudentMetadataV2Update, PaymentCollector, PaymentRecord, TransactionType
 from src.models.tutor_v2_model import TutorStatus, TutorMetadataV2Update
 
+from decimal import Decimal
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+class _DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        return float(o) if isinstance(o, Decimal) else super().default(o)
 
 CALENDAR_LIST_SYNC_TYPE = "calendarList"
 
@@ -595,7 +602,7 @@ def handle_get_student(interaction: dict) -> dict:
         return {"type": 4, "data": {"content": f"InternalError: Student '{student_name}' meta not found.", "flags": 64}}
 
     payment = meta.payment_collected_by if meta.payment_collected_by else "Not set"
-    pricing = json.dumps(meta.hourly_pricing, indent=2) if meta.hourly_pricing else "Not set"
+    pricing = json.dumps(meta.hourly_pricing, indent=2, cls=_DecimalEncoder) if meta.hourly_pricing else "Not set"
 
     info = f"""**Student: {student.student_name}**
 ```
@@ -712,7 +719,7 @@ def handle_update_student(interaction: dict) -> dict:
                             "label": "Student Data (JSON)",
                             "style": 2,  # Paragraph
                             "placeholder": '{"hourly_price_standard": 25.0}',
-                            "value": json.dumps(current_data, indent=2),
+                            "value": json.dumps(current_data, indent=2, cls=_DecimalEncoder),
                             "required": True,
                             "max_length": 2000
                         }
@@ -726,12 +733,12 @@ def handle_update_student(interaction: dict) -> dict:
 def handle_record_payment(interaction: dict) -> dict:
     """Handle /record_payment command."""
     options = interaction.get("data", {}).get("options", [])
-    
+
     student_name = None
     amount = None
     action_by = None
     transaction_type = TransactionType.CREDIT
-    
+
     for opt in options:
         name = opt.get("name")
         value = opt.get("value")
@@ -744,15 +751,15 @@ def handle_record_payment(interaction: dict) -> dict:
             # Validate it's a valid enum value
             if action_by and action_by not in [e.value for e in PaymentCollector]:
                 return {"type": 4, "data": {"content": f"Invalid action_by. Must be one of: {', '.join([e.value for e in PaymentCollector])}", "flags": 64}}
-    
+
     if not all([student_name, amount is not None, action_by]):
         return {"type": 4, "data": {"content": "Please provide student_name, amount, and action_by.", "flags": 64}}
-    
+
     # Verify student exists
     student = student_functions.get_student(student_name)
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
-    
+
     try:
         # Create payment record
         payment_record = PaymentRecord(
@@ -761,27 +768,27 @@ def handle_record_payment(interaction: dict) -> dict:
             action_by=action_by,
             transaction_type=transaction_type
         )
-        
+
         # Convert to transaction and save
         transaction = payment_record.to_transaction()
-        
+
         # Save to DynamoDB (assuming we have a transactions table)
         dynamodb.put_item(settings.transactions_table, transaction.to_dynamodb())
-        
+
         # Update student balance
         new_balance = student.balance - amount
-            
+
         student_functions.update_student_balance(student_name, new_balance)
-        
+
         action_text = "payment"
         return {
-            "type": 4, 
+            "type": 4,
             "data": {
                 "content": f"Successfully recorded: **{student_name}** {action_text} of **${amount:.2f}** to {action_by}\nNew balance: **${new_balance:.2f}**",
                 "flags": 64
             }
         }
-        
+
     except Exception as e:
         return {"type": 4, "data": {"content": f"Error recording payment: {str(e)}", "flags": 64}}
 
