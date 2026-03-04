@@ -21,6 +21,12 @@ def get_all_students() -> list[StudentV2]:
     return [StudentV2.from_dynamodb(item) for item in items]
 
 
+def get_all_student_metadata() -> list[StudentMetadataV2]:
+    """Get all student metadata from StudentsMetadataV2."""
+    items = dynamodb.scan_table(settings.students_metadata_table)
+    return [StudentMetadataV2.from_dynamodb(item) for item in items]
+
+
 def get_students_by_tutor(tutor_id: str) -> list[StudentV2]:
     """Get all students associated with a specific tutor via their sessions."""
     sessions = session_functions.get_sessions_by_tutor(tutor_id)
