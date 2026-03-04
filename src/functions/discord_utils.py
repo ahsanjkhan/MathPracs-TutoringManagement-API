@@ -263,6 +263,69 @@ def create_feedback_channel(tutor_name: str) -> str | None:
         return None
 
 
+def create_session_reminders_channel(tutor_name: str) -> str | None:
+    """
+    Create a private Discord channel for session reminders for a tutor.
+    Channel name format: session-reminders-<name> (e.g., session-reminders-mustafa)
+    Returns the channel ID if created, None if failed.
+    """
+    creds = get_discord_credentials()
+    bot_token = creds.get("bot_token")
+    guild_id = creds.get("guild_id")
+    bot_id = creds.get("bot_id")
+
+    if not bot_token or not guild_id:
+        logger.error("Discord bot_token or guild_id not configured in Secrets Manager")
+        return None
+
+    clean_name = normalize_tutor_name(tutor_name)
+    channel_name = f"session-reminders-{clean_name}"
+
+    permission_overwrites = [
+        {
+            "id": guild_id,
+            "type": 0,
+            "deny": "1024"
+        }
+    ]
+
+    if bot_id:
+        permission_overwrites.append({
+            "id": bot_id,
+            "type": 1,
+            "allow": "1024"
+        })
+
+    try:
+        response = httpx.post(
+            f"https://discord.com/api/v10/guilds/{guild_id}/channels",
+            headers={
+                "Authorization": f"Bot {bot_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "name": channel_name,
+                "type": 0,
+                "topic": f"Session reminders for {tutor_name}",
+                "parent_id": "1478848046543536372",
+                "permission_overwrites": permission_overwrites
+            },
+            timeout=30.0
+        )
+
+        if response.status_code == 201:
+            channel_id = response.json().get("id")
+            logger.info(f"Created session reminders Discord channel #{channel_name} (ID: {channel_id})")
+            return channel_id
+        else:
+            logger.error(f"Failed to create session reminders Discord channel: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error creating session reminders Discord channel: {e}")
+        return None
+
+
 def send_channel_message(channel_id: str, message: str) -> str | None:
     """
     Send a message to a Discord channel.

@@ -132,6 +132,19 @@ def set_tutor_feedback_channel(tutor_id: str, channel_id: str) -> bool:
     return True
 
 
+def set_tutor_session_reminders_channel(tutor_id: str, channel_id: str) -> bool:
+    """Set the session reminders Discord channel for a tutor."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return False
+    dynamodb.update_item(
+        settings.tutors_table,
+        {"tutorId": tutor_id},
+        {"sessionRemindersDiscordChannelId": channel_id, "updatedAt": datetime.now(timezone.utc).isoformat()},
+    )
+    return True
+
+
 def set_tutor_dropbox_channel(tutor_id: str, channel_id: str) -> bool:
     """Set the dropbox notification Discord channel for a tutor."""
     existing = get_tutor(tutor_id)
