@@ -512,7 +512,8 @@ def _compute_monthly_student_profits(month_start: datetime, month_end: datetime,
                 demo_cost  += hours * tutor_rate
                 demo_count += 1
             elif _is_no_show(s):
-                ns_rev  += hours * rate * 0.5
+                ns_rate = float(meta.no_show_custom_rate) if meta and meta.no_show_custom_rate is not None else rate * 0.5
+                ns_rev  += hours * ns_rate
                 ns_cost += hours * tutor_rate
                 ns_count += 1
             else:
