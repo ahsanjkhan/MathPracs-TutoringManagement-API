@@ -883,37 +883,86 @@ def handle_update_student(interaction: dict) -> dict:
 
     # Build current data from StudentMetadataV2Update fields (metadata)
     student_meta = student_functions.get_student_metadata(student.student_name)
+    #todo remove print statements
+    print(f"student_metadata>> {student_meta}")
     if not student_meta:
         return {"type": 4, "data": {"content": f"InternalError: Student '{student_name}' meta not found.", "flags": 64}}
-    current_data = {}
-    for field_name in StudentMetadataV2Update.model_fields:
-        value = getattr(student_meta, field_name, None) if student_meta else None
-        current_data[field_name] = value
 
-    return {
+    payload_modal = {
         "type": 9,  # MODAL
         "data": {
             "custom_id": f"update_student_modal:{student.student_name}",
             "title": f"Update {student.student_name}",
             "components": [
                 {
-                    "type": 1,  # Action Row
-                    "components": [
-                        {
-                            "type": 4,  # Text Input
-                            "custom_id": "student_json",
-                            "label": "Student Data (JSON)",
-                            "style": 2,  # Paragraph
-                            "placeholder": '{"hourly_price_standard": 25.0}',
-                            "value": json.dumps(current_data, indent=2, cls=_DecimalEncoder),
-                            "required": True,
-                            "max_length": 2000
-                        }
-                    ]
-                }
+                    "type": 18,
+                    "label": "Timezone",
+                    "component": {
+                        "type": 4,
+                        "custom_id": "student_timezone",
+                        "style": 1,
+                        "placeholder": "e.g. America/New_York",
+                        "required": False,
+                        "value": "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Hourly Pricing (JSON)",
+                    "description": 'e.g. {"1": 30, "2": 25, "3": 20}',
+                    "component": {
+                        "type": 4,
+                        "custom_id": "hourly_pricing",
+                        "style": 2,
+                        "placeholder": '{"1": 30, "2": 25}',
+                        "required": False,
+                        "value": json.dumps(student_meta.hourly_pricing, cls=_DecimalEncoder) if student_meta.hourly_pricing else "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Phone Numbers (JSON)",
+                    "description": 'e.g. {"parent": "+1234567890"}',
+                    "component": {
+                        "type": 4,
+                        "custom_id": "phone_numbers",
+                        "style": 2,
+                        "placeholder": '{"parent": "+1234567890"}',
+                        "required": False,
+                        "value": json.dumps(student_meta.phone_numbers, cls=_DecimalEncoder) if student_meta.phone_numbers else "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "No-Show Custom Rate",
+                    "description": "Flat fee charged on no-show (leave blank for default 0.5x rate)",
+                    "component": {
+                        "type": 4,
+                        "custom_id": "no_show_custom_rate",
+                        "style": 1,
+                        "placeholder": "e.g. 10.0",
+                        "required": False,
+                        "value": str(student_meta.no_show_custom_rate) if student_meta.no_show_custom_rate is not None else "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Payment Collected By",
+                    "component": {
+                        "type": 21,  # Radio Group
+                        "custom_id": "payment_collected_by",
+                        "options": [
+                            {"label": "Muaz", "value": "muaz"},
+                            {"label": "Ahsan", "value": "ahsan"},
+                            {"label": "Business", "value": "business"}
+                        ]
+                    }
+                },
             ]
         }
     }
+    print(f"payload_modal>> {payload_modal}")
+    return payload_modal
 
 
 def handle_record_payment(interaction: dict) -> dict:
