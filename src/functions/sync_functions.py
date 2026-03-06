@@ -140,6 +140,11 @@ def sync_calendar_list() -> dict:
                 logger.info(f"Created feedback Discord channel for tutor: {tutor.tutor_name}")
                 tutor_functions.set_tutor_feedback_channel(tutor.tutor_id, feedback_channel_id)
 
+            session_reminders_channel_id = discord_utils.create_session_reminders_channel(tutor.tutor_name)
+            if session_reminders_channel_id:
+                logger.info(f"Created session reminders Discord channel for tutor: {tutor.tutor_name}")
+                tutor_functions.set_tutor_session_reminders_channel(tutor.tutor_id, session_reminders_channel_id)
+
     if not calendars:
         u2, d2 = refresh_tracked_tutors()
         updated += u2
