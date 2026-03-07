@@ -100,6 +100,7 @@ class TransactionType(str, Enum):
     DEBIT = "DEBIT"    # Student owes money (weekly billing)
     CREDIT = "CREDIT"  # Student paid money
 
+
 class Transaction(BaseModel):
     """Payment transaction record."""
     student_name: str  # Partition key
@@ -142,6 +143,7 @@ class StudentMetadataV2Update(BaseModel):
     phone_numbers: Optional[dict] = None
     no_show_custom_rate: Optional[float] = None
     payment_collected_by: Optional[str] = None
+
 
 class PaymentRecord(BaseModel):
     """Input model for recording a payment."""

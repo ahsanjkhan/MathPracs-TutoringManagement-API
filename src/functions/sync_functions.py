@@ -353,11 +353,11 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
                                 default_phone_numbers = {
                                     "18324174712": {
                                         "sessionReminders": True,
-                                        "paymentReminders": True
+                                        "paymentReminders": False
                                     },
                                     "18325745458": {
                                         "sessionReminders": True,
-                                        "paymentReminders": True
+                                        "paymentReminders": False
                                     }
                                 }
                                 student_meta = StudentMetadataV2(
