@@ -196,7 +196,7 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
     docs_created = 0
     updated = 0
     deleted = 0
-    time_min = SESSION_CUTOFF_DATE.isoformat().replace("+00:00", "Z")
+    time_min = (datetime.now(timezone.utc) - timedelta(days=settings.session_lookback_days)).isoformat().replace("+00:00", "Z")
     time_max = (datetime.now(timezone.utc) + timedelta(days=settings.session_lookahead_days)).isoformat().replace("+00:00", "Z")
 
     # First pass: collect all events from all tutors

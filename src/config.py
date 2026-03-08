@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Session sync settings
     session_keyword: str = r"\btutoring\b"  # Regex to match tutoring events
     session_lookahead_days: int = 7  # How many days ahead to sync
+    session_lookback_days: int = 30  # How many days back to sync
 
     class Config:
         env_prefix = "TUTORING_"
