@@ -12,14 +12,15 @@ This API automatically syncs with Google Calendar to track tutoring sessions and
 - A Google Doc for session notes
 - A Google Meet link
 - A Dropbox folder for homework uploads
+- Discord channels for the tutor (tutor, dropbox notifications, feedback, session reminders)
 
 ## Features
 
 - **Google Calendar Integration** - Auto-discovers tutors and syncs sessions
 - **Student Management** - Auto-creates docs, Meet links, and Dropbox folders
 - **Discord Slash Commands** - Serverless bot via HTTP interactions (no EC2 needed)
+- **Dropbox Webhooks** - Notifies tutors via Discord when students upload homework
 - **Session Feedback** - AI-powered feedback summaries via Groq
-- **Google OAuth2** - Protected API routes with email allowlist
 - **AWS Lambda Ready** - Runs serverless via Mangum adapter
 - **EventBridge Polling** - Syncs every 3 minutes automatically
 
@@ -29,7 +30,6 @@ This API automatically syncs with Google Calendar to track tutoring sessions and
 |-----------|------------|
 | Framework | FastAPI |
 | Database | DynamoDB |
-| Auth | Google OAuth2 |
 | Cloud | AWS Lambda + API Gateway |
 | Scheduler | AWS EventBridge |
 | Storage | Google Drive, Dropbox |
@@ -40,15 +40,11 @@ This API automatically syncs with Google Calendar to track tutoring sessions and
 
 ```
 src/
-├── main.py                 # FastAPI app entry point
-├── auth.py                 # Google OAuth2 authentication
+├── main.py                 # FastAPI app entry point + Lambda handler
 ├── config.py               # Settings and configuration
 ├── APIs/
-│   ├── tutors_api.py       # Tutor endpoints
-│   ├── sessions_api.py     # Session endpoints
-│   ├── students_api.py     # Student endpoints
-│   ├── sync_api.py         # Sync endpoints (EventBridge)
-│   └── discord_api.py      # Discord interactions endpoint
+│   ├── discord_api.py      # Discord interactions endpoint
+│   └── dropbox_webhook_api.py  # Dropbox webhook endpoint
 ├── functions/
 │   ├── tutor_functions.py  # Tutor business logic
 │   ├── session_functions.py# Session business logic
@@ -61,89 +57,71 @@ src/
 │   ├── google_docs.py      # Google Drive/Docs API
 │   ├── google_meet.py      # Google Meet API
 │   ├── dropbox.py          # Dropbox API
-│   └── dynamodb.py         # DynamoDB operations
-└── models/
-    ├── tutor_model.py      # Tutor data models
-    ├── session_model.py    # Session data models
-    ├── student_model.py    # Student data models
-    └── calendar_state_model.py # Sync state model
-
-scripts/
-└── register_commands.py    # One-time Discord command registration
+│   ├── dynamodb.py         # DynamoDB operations
+│   ├── ssm_utils.py        # SSM Parameter Store utilities
+│   ├── utils.py            # General utilities
+│   └── webhook_handlers.py # Webhook processing
+├── models/
+│   ├── tutor_v2_model.py       # Tutor data models
+│   ├── session_model.py        # Session data models
+│   ├── student_v2_model.py     # Student data models
+│   └── calendar_state_model.py # Sync state model
+└── scripts/
+    └── register_discord_commands.py  # Discord command registration
 ```
 
 ## API Endpoints
 
-### Tutors
+### Discord (Signature Verified)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/tutors` | Get all tutors |
-| GET | `/tutors/{tutor}` | Get tutor by ID or name |
-| PATCH | `/tutors/{tutor}` | Update tutor |
-| DELETE | `/tutors/{tutor}` | Deactivate tutor |
+| POST | `/discord/interactions` | Discord slash commands, buttons & modals |
 
-### Sessions
+### Dropbox (Signature Verified)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/sessions` | Get all sessions |
-| POST | `/sessions` | Create session |
-| GET | `/sessions/tutor/{tutor}` | Get sessions by tutor |
-| PATCH | `/sessions/tutor/{tutor}/{session_id}` | Update session |
-| DELETE | `/sessions/tutor/{tutor}/{session_id}` | Delete session |
+| GET | `/dropbox/webhook` | Dropbox webhook verification (challenge) |
+| POST | `/dropbox/webhook` | Dropbox file change notifications |
 
-### Students
+### Health
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/students` | Get all students |
-| GET | `/students/{student_name}` | Get student by name |
-| GET | `/students/tutor/{tutor}` | Get students by tutor |
-| PUT | `/students/{student_name}` | Update student |
-| PATCH | `/students/{student_name}` | Patch student |
-
-### Sync (Public - No Auth)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/sync/calendars` | Sync calendars only |
-| POST | `/sync/sessions` | Full sync (calendars + sessions) |
-
-### Discord (Public - Signature Verified)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/discord/interactions` | Discord slash commands & buttons |
+| GET | `/health` | Health check |
 
 ## Discord Slash Commands
 
-The bot runs serverlessly via HTTP interactions - no EC2 or persistent connection needed.
+The bot runs serverlessly via HTTP interactions — no EC2 or persistent connection needed.
 
 ### Tutor Commands
 | Command | Description |
 |---------|-------------|
-| `/ping_bot` | Test if bot is connected |
 | `/sessions` | View scheduled sessions for next 24 hours |
-| `/earnings` | View earnings for the current month |
+| `/links_student <name>` | Get meeting, homework folder, and upload links for a student |
 | `/refresh_commands` | Update pinned onboarding message |
 
 ### Admin Commands
 | Command | Description |
 |---------|-------------|
-| `/manual_sync` | Trigger calendar + event sync |
+| `/ping_bot` | Test if bot is connected |
 | `/active_tutors` | List all active tutors |
+| `/manual_sync` | Trigger calendar + event sync |
 | `/get_tutor <name>` | View tutor details |
 | `/get_student <name>` | View student details |
 | `/update_tutor <name>` | Update tutor via modal |
 | `/update_student <name>` | Update student via modal |
+| `/tutor_monthly_payments` | View total earnings across all tutors for the current month |
+| `/hours_tutored_chart` | Bar chart of total hours tutored per month |
+| `/help` | Show all commands and descriptions |
 
 ### Session Feedback
-When a session is completed, tutors receive a feedback prompt with a button. Clicking it opens a modal to enter feedback, which is then summarized by AI (Groq) and posted to a feedback channel.
+When a session is completed, tutors receive a feedback prompt with a button in their feedback channel. Clicking it opens a modal to enter feedback, which is then summarized by AI (Groq) and posted to a feedback channel.
 
 ## Setup
 
 ### Prerequisites
 
-- Python 3.10+
-- AWS Account with DynamoDB tables
-- Google Cloud Project with APIs enabled
-- Dropbox App
+- Python 3.11+
+- AWS Account with infrastructure deployed via [MathPracs-TutoringManagement-CDK](https://github.com/ahsanjkhan/MathPracs-TutoringManagement-CDK)
 
 ### 1. Install Dependencies
 
@@ -157,9 +135,9 @@ pip install -r requirements-local.txt
 
 ### 2. AWS Secrets Manager
 
-Store credentials in AWS Secrets Manager:
+Secrets are created by the CDK stack. Update them with your API credentials:
 
-**Google Credentials** (`tutoring-api/google-credentials`):
+**Google Credentials** (`tutoring-api/google-credentials-cdk`):
 ```json
 {
   "type": "service_account",
@@ -168,11 +146,11 @@ Store credentials in AWS Secrets Manager:
   "client_email": "...",
   "oauth_web_client_id": "...",
   "oauth_web_client_secret": "...",
-  "allowed_emails": ["user@example.com"]
+  "allowed_emails": ["<email>"]
 }
 ```
 
-**Dropbox Credentials** (`tutoring-api/dropbox-credentials`):
+**Dropbox Credentials** (`tutoring-api/dropbox-credentials-cdk`):
 ```json
 {
   "app_key": "...",
@@ -181,7 +159,7 @@ Store credentials in AWS Secrets Manager:
 }
 ```
 
-**Discord Credentials** (`tutoring-api/discord-credentials`):
+**Discord Credentials** (`tutoring-api/discord-credentials-cdk`):
 ```json
 {
   "bot_token": "...",
@@ -189,11 +167,13 @@ Store credentials in AWS Secrets Manager:
   "public_key": "...",
   "guild_id": "...",
   "bot_id": "...",
-  "session_feedback_channel_id": "..."
+  "session_feedback_channel_id": "...",
+  "muaz_student_payment_channel_id": "...",
+  "ahsan_student_payment_channel_id": "..."
 }
 ```
 
-**Groq Credentials** (`tutoring-api/groq-credentials`):
+**Groq Credentials** (`tutoring-api/groq-credentials-cdk`):
 ```json
 {
   "api_key": "..."
@@ -202,13 +182,16 @@ Store credentials in AWS Secrets Manager:
 
 ### 3. DynamoDB Tables
 
-Create the following tables:
+Tables are created by the CDK stack:
 
 | Table | Partition Key | Sort Key |
 |-------|---------------|----------|
-| Tutors | tutorId (S) | - |
+| TutorsV2 | tutorId (S) | - |
+| TutorsMetadataV2 | tutorId (S) | - |
 | Sessions | tutorId (S) | sessionId (S) |
-| Students | studentName (S) | - |
+| StudentsV2 | studentName (S) | - |
+| StudentsMetadataV2 | studentName (S) | - |
+| Transactions | studentName (S) | transactionKey (S) |
 | CalendarListState | syncType (S) | - |
 
 ### 4. Run Locally
@@ -217,25 +200,29 @@ Create the following tables:
 uvicorn src.main:app --reload
 ```
 
-Access Swagger UI at: `http://localhost:8000/docs`
-
 ### 5. Deploy to AWS Lambda
 
-The app uses Mangum for Lambda compatibility. Deploy using your preferred method (SAM, Serverless Framework, CDK, etc.).
+Raising a Pull Request for commits on a feature branch, getting it approved, and squashing and merging into `main` on either this repo or [MathPracs-TutoringManagement-CDK](https://github.com/ahsanjkhan/MathPracs-TutoringManagement-CDK) automatically triggers the CodePipeline, which runs deploys the changes.
 
-### 6. Setup Discord Slash Commands
+#### Manual Deployments (Avoid if possible)
+1. Make changes on feature branch.
+2. Commit those changes and raise Pull Request as usual.
+3. Deploy the changes directly from MathPracs-TutoringManagement-CDK:
+   ```bash
+   CDK_DOCKER=finch npx cdk deploy MathPracsTutoringManagementCdkStack
+   ```
 
-1. Register commands with Discord:
+
+### 6. Register Discord Slash Commands
+
 ```bash
-python scripts/register_commands.py --guild
+python -m src.scripts.register_discord_commands
 ```
 
-2. In Discord Developer Portal, set **Interactions Endpoint URL** to:
+Then in Discord Developer Portal, set **Interactions Endpoint URL** to:
 ```
 https://your-api-gateway-url/prod/discord/interactions
 ```
-
-Discord will verify the endpoint before saving.
 
 ## Configuration
 
@@ -244,32 +231,45 @@ Environment variables (prefix with `TUTORING_`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AWS_REGION` | us-east-1 | AWS region |
-| `TUTORS_TABLE` | Tutors | DynamoDB table name |
-| `SESSIONS_TABLE` | Sessions | DynamoDB table name |
-| `STUDENTS_TABLE` | Students | DynamoDB table name |
-| `CALENDAR_SYNC_TABLE` | CalendarListState | DynamoDB table name |
+| `TUTORS_TABLE` | TutorsV2 | Tutors DynamoDB table |
+| `TUTORS_METADATA_TABLE` | TutorsMetadataV2 | Tutors metadata table |
+| `SESSIONS_TABLE` | Sessions | Sessions DynamoDB table |
+| `STUDENTS_TABLE` | StudentsV2 | Students DynamoDB table |
+| `STUDENTS_METADATA_TABLE` | StudentsMetadataV2 | Students metadata table |
+| `TRANSACTIONS_TABLE` | Transactions | Transactions DynamoDB table |
+| `CALENDAR_SYNC_TABLE` | CalendarListState | Calendar sync state table |
+| `GOOGLE_CREDENTIALS_SECRET_NAME` | tutoring-api/google-credentials-cdk | Google credentials secret |
+| `DROPBOX_CREDENTIALS_SECRET_NAME` | tutoring-api/dropbox-credentials-cdk | Dropbox credentials secret |
+| `DISCORD_CREDENTIALS_SECRET_NAME` | tutoring-api/discord-credentials-cdk | Discord credentials secret |
+| `GROQ_CREDENTIALS_SECRET_NAME` | tutoring-api/groq-credentials-cdk | Groq credentials secret |
+| `PARENT_DRIVE_FOLDER_ID_SSM_NAME` | /tutoring-api/parent-drive-folder-id | Google Drive parent folder SSM param |
+| `DROPBOX_PARENT_FOLDER_SSM_NAME` | /tutoring-api/dropbox-parent-folder | Dropbox parent folder SSM param |
 
 ## How It Works
 
+### Lambda Handler
+
+The Lambda handler in `main.py` routes three types of events:
+1. **Discord async tasks** — fire-and-forget Lambda self-invocations for slow commands
+2. **EventBridge scheduled events** — triggers calendar + session sync directly (not via API routes)
+3. **API Gateway requests** — handled by FastAPI via Mangum
+
 ### Sync Flow
 
-1. **EventBridge** triggers `/sync/sessions` every 3 minutes
+1. **EventBridge** triggers sync every 3 minutes
 2. **Calendar Sync** discovers tutors from calendars with "tutoring" in the name
 3. **Event Sync** fetches events with "tutoring" keyword
 4. **Student Detection** extracts student name from event title (e.g., "Ved Tutoring" → Ved)
-5. **Auto-Setup** creates Google Doc, Meet link, and Dropbox folder for new students
+5. **Auto-Setup** creates Google Doc, Meet link, Dropbox folder, and Discord channels for new students/tutors
 6. **Doc Attachment** attaches the MathPracs doc to calendar events
+7. **Feedback Prompt** sends a feedback button to the tutor's feedback channel when a session completes
 
 ### Naming Convention
 
 - Calendar events: `{StudentName} Tutoring` (e.g., "Ved Tutoring")
 - Google Docs: `{StudentName} MathPracs` (e.g., "Ved MathPracs")
 - Dropbox folders: `{StudentName} MathPracs`
-
-### Authentication
-
-- **Protected routes**: Tutors, Sessions, Students (require Google OAuth)
-- **Public routes**: Sync endpoints (for EventBridge), Health check
+- Discord channels: `tutor-{name}`, `dropbox-{name}`, `feedback-{name}`, `session-reminders-{name}`
 
 ## Session Statuses
 
