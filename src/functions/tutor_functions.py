@@ -45,11 +45,11 @@ def get_all_tutors_metadata() -> dict[str, TutorMetadataV2]:
 
 
 def get_tutor_by_name(name: str) -> Optional[TutorV2]:
-    """Find tutor by name (case-insensitive partial match on first word)."""
-    search_term = name.strip().lower()
+    """Find tutor by name (case-sensitive match)."""
+    search_term = name.strip()
     tutors = get_all_tutors(status_filter=TutorStatus.ACTIVE)
     for tutor in tutors:
-        if tutor.tutor_name.lower() == search_term:
+        if tutor.tutor_name == search_term:
             return tutor
     return None
 

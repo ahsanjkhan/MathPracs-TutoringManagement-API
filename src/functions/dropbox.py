@@ -140,8 +140,8 @@ def list_folder_changes(cursor: str) -> tuple[list[dict], str | None]:
                     if len(path_parts) >= 3:
                         folder_name = path_parts[2]  # "Aiden MathPracs"
                         # Extract first name before "MathPracs"
-                        if "mathpracs" in folder_name.lower():
-                            student_name = folder_name.lower().replace("mathpracs", "").strip().title()
+                        if "MathPracs" in folder_name:
+                            student_name = folder_name.replace("MathPracs", "").strip()
 
                     files.append({
                         "name": entry.name,
@@ -165,8 +165,8 @@ def extract_student_name_from_path(path: str) -> str | None:
     path_parts = path.split('/')
     if len(path_parts) >= 3:
         folder_name = path_parts[2]  # "Aiden MathPracs"
-        if "mathpracs" in folder_name.lower():
-            return folder_name.lower().replace("mathpracs", "").strip().title()
+        if "MathPracs" in folder_name:
+            return folder_name.replace("MathPracs", "").strip()
     return None
 
 

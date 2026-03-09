@@ -9,10 +9,10 @@ from src.models.student_v2_model import StudentV2, StudentMetadataV2, StudentMet
 settings = get_settings()
 
 
-# Todo: this function does not work with edge cases such as "Isaac SAT" or "TestStudentV2" because of the .title() call
+# This function does NOT handle case mismatches such as matching "chris" to "Chris"
 def normalize_student_name(name: str) -> str:
-    """Normalize student name to title case for consistent lookups."""
-    return name.strip().title()
+    """Normalize student name to strip leading and trailing whitespaces for consistent lookups."""
+    return name.strip()
 
 
 def get_all_students() -> list[StudentV2]:
@@ -45,7 +45,7 @@ def get_students_by_tutor(tutor_id: str) -> list[StudentV2]:
 
 
 def get_student(student_name: str) -> Optional[StudentV2]:
-    """Get a student by name (case-insensitive). Returns None if not found."""
+    """Get a student by name (case-sensitive). Returns None if not found."""
     normalized_name = normalize_student_name(student_name)
     item = dynamodb.get_item(settings.students_table, {"studentName": normalized_name})
     if item:
