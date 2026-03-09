@@ -946,10 +946,12 @@ def handle_record_payment(interaction: dict) -> dict:
     if not student:
         return {"type": 4, "data": {"content": f"Student '{student_name}' not found.", "flags": 64}}
 
+    normalized_student_name = student.student_name
+
     try:
         # Create payment record
         payment_record = PaymentRecord(
-            student_name=student_name,
+            student_name=normalized_student_name,
             amount=amount,
             action_by=action_by,
             transaction_type=transaction_type
