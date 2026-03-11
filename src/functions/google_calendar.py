@@ -132,27 +132,30 @@ def attach_doc_to_event(calendar_id: str, event_id: str, doc_id: str, doc_title:
 
         existing_attachments = event.get("attachments", [])
 
-        # Check if ANY Google Doc is already attached (manual or auto-generated)
+        # Check if the correct doc is already attached
         for attachment in existing_attachments:
-            if attachment.get("mimeType") == "application/vnd.google-apps.document":
-                return False  # Already has a doc attached, skip
+            if (attachment.get("mimeType") == "application/vnd.google-apps.document"
+                    and attachment.get("fileId") == doc_id):
+                return False  # Correct doc already attached, skip
 
-        # No doc attached - add the auto-generated one
+        # Remove any existing Google Doc attachments (manual or wrong doc)
+        filtered = [a for a in existing_attachments if a.get("mimeType") != "application/vnd.google-apps.document"]
+
+        # Add the correct doc
         doc_url = f"https://docs.google.com/document/d/{doc_id}"
-        new_attachment = {
+        filtered.append({
             "fileUrl": doc_url,
             "mimeType": "application/vnd.google-apps.document",
             "title": doc_title,
             "fileId": doc_id
-        }
-        existing_attachments.append(new_attachment)
+        })
 
-        # Update event with attachment
+        # Update event with corrected attachments
         service.events().patch(
             calendarId=calendar_id,
             eventId=event_id,
             supportsAttachments=True,
-            body={"attachments": existing_attachments}
+            body={"attachments": filtered}
         ).execute()
 
         return True
