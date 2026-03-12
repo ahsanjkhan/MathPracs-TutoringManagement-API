@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import urllib.parse
+import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -885,35 +886,86 @@ def handle_update_student(interaction: dict) -> dict:
     student_meta = student_functions.get_student_metadata(student.student_name)
     if not student_meta:
         return {"type": 4, "data": {"content": f"InternalError: Student '{student_name}' meta not found.", "flags": 64}}
-    current_data = {}
-    for field_name in StudentMetadataV2Update.model_fields:
-        value = getattr(student_meta, field_name, None) if student_meta else None
-        current_data[field_name] = value
 
-    return {
+    modal_uuid = str(uuid.uuid4())
+    hourly_rate_structure = {"1": 00, "2": 00, "3": 00, "4": 00, "5": 00}
+    payload_modal = {
         "type": 9,  # MODAL
         "data": {
-            "custom_id": f"update_student_modal:{student.student_name}",
+            "custom_id": f"update_student_modal:{student.student_name}:{modal_uuid}",
             "title": f"Update {student.student_name}",
             "components": [
                 {
-                    "type": 1,  # Action Row
-                    "components": [
-                        {
-                            "type": 4,  # Text Input
-                            "custom_id": "student_json",
-                            "label": "Student Data (JSON)",
-                            "style": 2,  # Paragraph
-                            "placeholder": '{"hourly_price_standard": 25.0}',
-                            "value": json.dumps(current_data, indent=2, cls=_DecimalEncoder),
-                            "required": True,
-                            "max_length": 2000
-                        }
-                    ]
-                }
+                    "type": 18,
+                    "label": "Timezone",
+                    "description": 'e.g. America/New_York',
+                    "component": {
+                        "type": 4,
+                        "custom_id": f"student_timezone_{modal_uuid}",
+                        "style": 1,
+                        "placeholder": "America/New_York",
+                        "required": False,
+                        "value": student_meta.student_timezone,
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Hourly Pricing (JSON)",
+                    "description": 'e.g. {"1": 30, "2": 25, "3": 20}',
+                    "component": {
+                        "type": 4,
+                        "custom_id": f"hourly_pricing_{modal_uuid}",
+                        "style": 2,
+                        "placeholder": '{"1": 30, "2": 25}',
+                        "required": False,
+                        "value": json.dumps(student_meta.hourly_pricing, indent=2, cls=_DecimalEncoder) if student_meta.hourly_pricing else json.dumps(hourly_rate_structure, indent=2, cls=_DecimalEncoder),
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Phone Numbers (JSON)",
+                    "description": 'e.g. {"18325745458": {"sessionReminders": true, "paymentReminders": false},...',
+                    "component": {
+                        "type": 4,
+                        "custom_id": f"phone_numbers_{modal_uuid}",
+                        "style": 2,
+                        "placeholder": '',
+                        "required": False,
+                        "value": json.dumps(student_meta.phone_numbers, indent=2, cls=_DecimalEncoder) if student_meta.phone_numbers else "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "No-Show Custom Rate",
+                    "description": "Flat fee charged on no-show (leave blank for default 0.5x rate)",
+                    "component": {
+                        "type": 4,
+                        "custom_id": f"no_show_custom_rate_{modal_uuid}",
+                        "style": 1,
+                        "placeholder": "e.g. 10.0",
+                        "required": False,
+                        "value": str(student_meta.no_show_custom_rate) if student_meta.no_show_custom_rate is not None else "",
+                    }
+                },
+                {
+                    "type": 18,
+                    "label": "Payment Collected By",
+                    "description": 'Who will collect the payment?',
+                    "component": {
+                        "type": 3,  # String Select
+                        "custom_id": f"payment_collected_by_{modal_uuid}",
+                        "placeholder": "Choose...",
+                        "options": [
+                            {"label": "Muaz", "value": "muaz", "default": student_meta.payment_collected_by == "muaz"},
+                            {"label": "Ahsan", "value": "ahsan", "default": student_meta.payment_collected_by == "ahsan"},
+                            {"label": "Business", "value": "business", "default": student_meta.payment_collected_by == "business"}
+                        ]
+                    }
+                },
             ]
         }
     }
+    return payload_modal
 
 
 def handle_record_payment(interaction: dict) -> dict:
@@ -1028,47 +1080,39 @@ def handle_tutor_modal_submit(interaction: dict) -> dict:
 def handle_student_modal_submit(interaction: dict) -> dict:
     """Handle student update modal submission."""
     custom_id = interaction.get("data", {}).get("custom_id", "")
-    student_name = custom_id.split(":")[-1] if ":" in custom_id else None
+    student_name = custom_id.split(":")[1] if ":" in custom_id else None
 
     if not student_name:
         return {"type": 4, "data": {"content": "Invalid modal submission.", "flags": 64}}
 
-    # Extract JSON from modal components
+    # Extract individual fields — UUID is last underscore-segment, strip it to get base name
     components = interaction.get("data", {}).get("components", [])
-    json_value = None
-    for row in components:
-        for comp in row.get("components", []):
-            if comp.get("custom_id") == "student_json":
-                json_value = comp.get("value")
-                break
-
-    if not json_value:
-        return {"type": 4, "data": {"content": "No data provided.", "flags": 64}}
+    fields = {}
+    for comp in components:
+        inner = comp.get("component", comp)  # V2: data is nested under "component"
+        cid = inner.get("custom_id", "")
+        base = "_".join(cid.split("_")[:-1]) if cid else ""
+        value = inner.get("value") or (inner.get("values") or [None])[0]
+        if base:
+            fields[base] = value
 
     try:
-        data = json.loads(json_value.replace('\r', ''))
+        student_timezone = fields.get("student_timezone") or None
+        hourly_pricing = json.loads(fields["hourly_pricing"].replace('\r', '')) if fields.get("hourly_pricing") else None
+        phone_numbers = json.loads(fields["phone_numbers"].replace('\r', '')) if fields.get("phone_numbers") else None
+        no_show_custom_rate = float(fields["no_show_custom_rate"]) if fields.get("no_show_custom_rate") else None
+        payment_collected_by = fields.get("payment_collected_by") or None
 
-        payment_collected_by = data.get("payment_collected_by")
-        # Validate it's a valid enum value
         if payment_collected_by and payment_collected_by not in [e.value for e in PaymentCollector]:
             return {"type": 4, "data": {"content": f"Invalid payment_collected_by. Must be one of: {', '.join([e.value for e in PaymentCollector])}", "flags": 64}}
 
-        if payment_collected_by:
-            meta_update = StudentMetadataV2Update(
-                hourly_pricing=data.get("hourly_pricing"),
-                phone_numbers=data.get("phone_numbers"),
-                student_timezone=data.get("student_timezone"),
-                no_show_custom_rate=data.get("no_show_custom_rate"),
-                payment_collected_by=payment_collected_by,
-            )
-        else:
-            meta_update = StudentMetadataV2Update(
-                hourly_pricing=data.get("hourly_pricing"),
-                phone_numbers=data.get("phone_numbers"),
-                student_timezone=data.get("student_timezone"),
-                no_show_custom_rate=data.get("no_show_custom_rate"),
-            )
-
+        meta_update = StudentMetadataV2Update(
+            student_timezone=student_timezone,
+            hourly_pricing=hourly_pricing,
+            phone_numbers=phone_numbers,
+            no_show_custom_rate=no_show_custom_rate,
+            payment_collected_by=payment_collected_by,
+        )
         student_functions.update_student_metadata(student_name, meta_update)
 
         return {"type": 4, "data": {"content": f"Successfully updated **{student_name}**!", "flags": 64}}
