@@ -221,10 +221,10 @@ def _sync_events_list_impl(tutor_cal_id: str) -> dict:
         for session in existing_sessions:
             # If session is in our time window but not on the calendar, delete it
             session_start = session.start if session.start.tzinfo else session.start.replace(tzinfo=timezone.utc)
-            cutoff = SESSION_CUTOFF_DATE
+            fetch_cutoff = datetime.now(timezone.utc) - timedelta(days=settings.session_lookback_days)
             lookahead = datetime.now(timezone.utc) + timedelta(days=settings.session_lookahead_days)
 
-            if cutoff <= session_start <= lookahead:
+            if fetch_cutoff <= session_start <= lookahead:
                 if session.session_id not in calendar_event_ids:
                     logger.info(f"Deleting orphaned session {session.session_id} for tutor {tutor.tutor_id}")
                     session_functions.delete_session(tutor.tutor_id, session.session_id)
