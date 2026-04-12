@@ -380,6 +380,7 @@ def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
         labels.append(datetime(CHART_START_YEAR, m, 1).strftime("%b %Y"))
 
     all_sessions = session_functions.get_all_sessions(status_filter=SessionStatus.COMPLETED)
+    all_sessions = [s for s in all_sessions if not _is_no_show(s)]
 
     hours_by_month: dict = {key: 0.0 for key in month_keys}
     for s in all_sessions:
