@@ -225,6 +225,31 @@ def archive_old_files_to_s3(days_old: int = 15) -> dict:
     return {"archived": archived, "failed": failed}
 
 
+def get_archived_files_for_student(student_name: str, expiry_seconds: int = 3600) -> list[dict]:
+    """
+    List archived files in S3 for a given student and generate presigned download URLs.
+    Returns list of dicts with 'name' and 'url' keys.
+    """
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    parent_folder = ssm_utils.get_dropbox_parent_folder().lstrip('/')
+    prefix = f"{parent_folder}/{student_name} MathPracs/"
+
+    results = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.dropbox_archive_bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            file_name = key.split("/")[-1]
+            url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": settings.dropbox_archive_bucket, "Key": key},
+                ExpiresIn=expiry_seconds
+            )
+            results.append({"name": file_name, "url": url})
+
+    return results
+
+
 def get_recent_changes() -> list[dict]:
     """
     Get recent file changes from Dropbox.

@@ -22,6 +22,7 @@ from src.functions import (
     dynamodb,
     discord_utils,
     groq_utils,
+    dropbox,
 )
 from src.functions.google_docs import extract_student_name
 from src.models.session_model import SessionStatus
@@ -627,10 +628,11 @@ def handle_profit_ahsan(interaction: dict, application_id: str) -> None:
 def handle_help(interaction: dict) -> dict:
     """Handle /help command — lists all commands grouped by role."""
     tutor_commands = [
-        ("my_sessions",      "View your scheduled sessions for the next 24 hours"),
-        ("my_earnings",      "View your earnings for the current month"),
-        ("student_links",    "Get meeting, upload, and file request links for a student"),
-        ("refresh_commands", "Update your pinned commands message"),
+        ("my_sessions",        "View your scheduled sessions for the next 24 hours"),
+        ("my_earnings",        "View your earnings for the current month"),
+        ("student_links",      "Get meeting, upload, and file request links for a student"),
+        ("get_archived_files", "Get download links for a student's archived files from Cloud"),
+        ("refresh_commands",   "Update your pinned commands message"),
     ]
     admin_commands = [
         ("ping_bot",             "Test if the bot is connected"),
@@ -1032,6 +1034,34 @@ def handle_record_payment(interaction: dict) -> dict:
 
     except Exception as e:
         return {"type": 4, "data": {"content": f"Error recording payment: {str(e)}", "flags": 64}}
+
+
+def handle_get_archived_files(interaction: dict, application_id: str) -> None:
+    """Handle /get_archived_files command — called as a deferred background task."""
+    token = interaction.get("token")
+    options = interaction.get("data", {}).get("options", [])
+    student_name = next((o["value"] for o in options if o["name"] == "student_name"), None)
+
+    if not student_name:
+        send_followup(application_id, token, content="Please provide a student name.")
+        return
+
+    try:
+        files = dropbox.get_archived_files_for_student(student_name)
+    except Exception as e:
+        logger.error(f"Failed to list archived files for {student_name}: {e}")
+        send_followup(application_id, token, content=f"Error retrieving archived files: {str(e)}")
+        return
+
+    if not files:
+        send_followup(application_id, token, content=f"No archived files found for **{student_name}**.")
+        return
+
+    lines = [f"**Archived files for {student_name}** (links expire in 1 hour)\n"]
+    for f in files:
+        lines.append(f"📄 [{f['name']}]({f['url']})")
+
+    send_followup(application_id, token, content="\n".join(lines))
 
 
 # =============================================================================

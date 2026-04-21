@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from mangum import Mangum
 from src.APIs import sync_api, discord_api, dropbox_webhook_api
 from src.auth import get_current_user, get_auth_config
-from src.functions import sync_functions, discord_commands, dropbox as dropbox_functions
+from src.functions import sync_functions, discord_commands, dropbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +25,7 @@ _DISCORD_TASK_HANDLERS = {
     "hours_tutored_chart": discord_commands.handle_hours_tutored_chart,
     "profit_muaz":        discord_commands.handle_profit_muaz,
     "profit_ahsan":       discord_commands.handle_profit_ahsan,
+    "get_archived_files": discord_commands.handle_get_archived_files,
 }
 
 
@@ -51,7 +52,7 @@ def lambda_handler(event, context):
         if action == 'archive-dropbox-files':
             logger.info("EventBridge archive-dropbox-files triggered")
             try:
-                result = dropbox_functions.archive_old_files_to_s3()
+                result = dropbox.archive_old_files_to_s3()
                 logger.info(f"Archive completed: {result}")
                 return {"statusCode": 200, "body": result}
             except Exception as e:
