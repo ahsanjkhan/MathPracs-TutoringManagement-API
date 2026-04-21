@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     parent_drive_folder_id_ssm_name: str = "/tutoring-api/parent-drive-folder-id"
     dropbox_parent_folder_ssm_name: str = "/tutoring-api/dropbox-parent-folder"
 
+    # S3 Archive
+    dropbox_archive_bucket: str = "mathpracs-dropbox-archive"
+
     # Google Drive / Dropbox
 
     # Session sync settings
