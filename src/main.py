@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from mangum import Mangum
 from src.APIs import sync_api, discord_api, dropbox_webhook_api
 from src.auth import get_current_user, get_auth_config
-from src.functions import sync_functions, discord_commands
+from src.functions import sync_functions, discord_commands, dropbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +25,7 @@ _DISCORD_TASK_HANDLERS = {
     "hours_tutored_chart": discord_commands.handle_hours_tutored_chart,
     "profit_muaz":        discord_commands.handle_profit_muaz,
     "profit_ahsan":       discord_commands.handle_profit_ahsan,
+    "get_archived_files": discord_commands.handle_get_archived_files,
 }
 
 
@@ -44,12 +45,24 @@ def lambda_handler(event, context):
             logger.warning(f"Unknown discord_task command: {command}")
         return {"statusCode": 200}
 
-    # EventBridge scheduled sync
+    # EventBridge scheduled events
     if event.get('source') == 'aws.events' or 'detail-type' in event:
+        action = event.get('detail', {}).get('action', 'sync-sessions')
+
+        if action == 'archive-dropbox-files':
+            logger.info("EventBridge archive-dropbox-files triggered")
+            try:
+                result = dropbox.archive_old_files_to_s3()
+                logger.info(f"Archive completed: {result}")
+                return {"statusCode": 200, "body": result}
+            except Exception as e:
+                logger.error(f"Archive failed: {str(e)}")
+                return {"statusCode": 500, "body": {"error": str(e)}}
+
+        # Default: sync-sessions
         logger.info("EventBridge sync triggered")
         print("EventBridge sync triggered")
         try:
-            # Run the sync directly
             calendar_result = sync_functions.sync_calendar_list()
             print(f"sync_functions.sync_calendar_list() done, starting sync_functions.sync_events_list next")
             sessions_result = sync_functions.sync_events_list(tutor_cal_id="ALL")

@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 import boto3
 import dropbox
 from dropbox.exceptions import ApiError
@@ -168,6 +169,85 @@ def extract_student_name_from_path(path: str) -> str | None:
         if "MathPracs" in folder_name:
             return folder_name.replace("MathPracs", "").strip()
     return None
+
+
+def archive_old_files_to_s3(days_old: int = 15) -> dict:
+    """
+    Archive files older than days_old from Dropbox to S3 Glacier Instant Retrieval,
+    then delete them from Dropbox.
+    Returns summary dict with archived/failed counts.
+    """
+    dbx = get_dropbox_client()
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
+    parent_folder = ssm_utils.get_dropbox_parent_folder()
+
+    archived = 0
+    failed = 0
+
+    # List all files recursively under the parent folder
+    result = dbx.files_list_folder(parent_folder, recursive=True)
+    entries = list(result.entries)
+    while result.has_more:
+        result = dbx.files_list_folder_continue(result.cursor)
+        entries.extend(result.entries)
+
+    for entry in entries:
+        if entry.__class__.__name__ != 'FileMetadata':
+            continue
+
+        file_modified = entry.server_modified.replace(tzinfo=timezone.utc)
+        if file_modified >= cutoff:
+            continue
+
+        # Mirror the Dropbox path as the S3 key, e.g. "Student Folders/Aiden MathPracs/hw.pdf"
+        s3_key = entry.path_display.lstrip('/')
+
+        try:
+            _, response = dbx.files_download(entry.path_display)
+            s3.put_object(
+                Bucket=settings.dropbox_archive_bucket,
+                Key=s3_key,
+                Body=response.content,
+                StorageClass='GLACIER_IR'
+            )
+            logger.info(f"Archived to S3: {s3_key}")
+
+            dbx.files_delete_v2(entry.path_display)
+            logger.info(f"Deleted from Dropbox: {entry.path_display}")
+
+            archived += 1
+        except Exception as e:
+            logger.error(f"Failed to archive {entry.path_display}: {e}")
+            failed += 1
+
+    logger.info(f"Archive complete: {archived} archived, {failed} failed")
+    return {"archived": archived, "failed": failed}
+
+
+def get_archived_files_for_student(student_name: str, expiry_seconds: int = 3600) -> list[dict]:
+    """
+    List archived files in S3 for a given student and generate presigned download URLs.
+    Returns list of dicts with 'name' and 'url' keys.
+    """
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    parent_folder = ssm_utils.get_dropbox_parent_folder().lstrip('/')
+    prefix = f"{parent_folder}/{student_name} MathPracs/"
+
+    results = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.dropbox_archive_bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            file_name = key.split("/")[-1]
+            url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": settings.dropbox_archive_bucket, "Key": key},
+                ExpiresIn=expiry_seconds
+            )
+            results.append({"name": file_name, "url": url})
+
+    return results
 
 
 def get_recent_changes() -> list[dict]:

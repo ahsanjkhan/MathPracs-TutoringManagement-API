@@ -120,6 +120,9 @@ async def discord_interactions(request: Request):
         elif command_name == "profit_ahsan":
             discord_utils.invoke_discord_task("profit_ahsan", interaction, application_id)
             return DEFERRED
+        elif command_name == "get_archived_files":
+            discord_utils.invoke_discord_task("get_archived_files", interaction, application_id)
+            return DEFERRED
         else:
             return {
                 "type": 4,
