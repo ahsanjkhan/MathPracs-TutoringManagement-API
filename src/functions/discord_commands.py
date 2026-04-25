@@ -113,6 +113,8 @@ def send_followup(
             json=payload,
             timeout=30.0,
         )
+        if response.status_code not in (200, 204):
+            logger.error(f"send_followup Discord error {response.status_code}: {response.text}")
         return response.status_code in (200, 204)
     except Exception as e:
         logger.error(f"Failed to send followup: {e}")
@@ -1041,6 +1043,7 @@ def handle_get_archived_files(interaction: dict, application_id: str) -> None:
     token = interaction.get("token")
     options = interaction.get("data", {}).get("options", [])
     student_name = next((o["value"] for o in options if o["name"] == "student_name"), None)
+    logger.info(f"handle_get_archived_files: student_name={student_name}")
 
     if not student_name:
         send_followup(application_id, token, content="Please provide a student name.")
@@ -1057,11 +1060,20 @@ def handle_get_archived_files(interaction: dict, application_id: str) -> None:
         send_followup(application_id, token, content=f"No archived files found for **{student_name}**.")
         return
 
-    lines = [f"**Archived files for {student_name}** (links expire in 1 hour)\n"]
+    header = f"**Archived files for {student_name}** (links expire in 1 hour)\n"
+    chunks = []
+    current = header
     for f in files:
-        lines.append(f"📄 [{f['name']}]({f['url']})")
+        line = f"\n📄 [{f['name']}]({f['url']})"
+        if len(current) + len(line) > 1900:
+            chunks.append(current)
+            current = line.lstrip("\n")
+        else:
+            current += line
+    chunks.append(current)
 
-    send_followup(application_id, token, content="\n".join(lines))
+    for chunk in chunks:
+        send_followup(application_id, token, content=chunk)
 
 
 # =============================================================================
