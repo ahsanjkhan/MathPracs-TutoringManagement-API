@@ -271,6 +271,92 @@ def archive_old_files_to_s3(days_old: int = 15) -> dict:
     return {"students": archived_students, "files": total_files, "failed": failed}
 
 
+def migrate_s3_individual_files_to_zips() -> dict:
+    """
+    One-time migration: reads existing individual files from S3 (stored under the old
+    'Student Folders/...' prefix), groups them by student, builds per-student ZIPs,
+    uploads to 'zips/', and deletes the individual files.
+    """
+    import os
+    import zipfile
+    import tempfile
+    from collections import defaultdict
+
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    parent_folder = ssm_utils.get_dropbox_parent_folder().lstrip('/')
+
+    # List all individual files (exclude zips/ prefix)
+    student_keys = defaultdict(list)  # student_name -> [s3_key, ...]
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.dropbox_archive_bucket, Prefix=parent_folder):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            student_name = extract_student_name_from_path("/" + key)
+            if student_name:
+                student_keys[student_name].append(key)
+
+    migrated_students = 0
+    total_files = 0
+    failed = 0
+
+    for student_name, keys in student_keys.items():
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                collected = {}
+
+                # Check for existing ZIP and extract it first
+                zip_key = f"zips/{student_name}_archived_files.zip"
+                existing_zip = os.path.join(tmp_dir, "existing.zip")
+                try:
+                    s3.download_file(settings.dropbox_archive_bucket, zip_key, existing_zip)
+                    with zipfile.ZipFile(existing_zip, 'r') as zf:
+                        for name in zf.namelist():
+                            out = os.path.join(tmp_dir, name)
+                            with zf.open(name) as src, open(out, 'wb') as dst:
+                                dst.write(src.read())
+                            collected[name] = out
+                    logger.info(f"Extracted existing ZIP for {student_name}: {len(collected)} files")
+                except Exception:
+                    logger.info(f"No existing ZIP for {student_name}")
+
+                # Download individual files from S3
+                for key in keys:
+                    file_name = key.split("/")[-1]
+                    local = os.path.join(tmp_dir, file_name)
+                    s3.download_file(settings.dropbox_archive_bucket, key, local)
+                    collected[file_name] = local
+                    logger.info(f"Downloaded from S3: {key}")
+
+                # Build ZIP
+                new_zip = os.path.join(tmp_dir, f"{student_name}_archived_files.zip")
+                with zipfile.ZipFile(new_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for name, path in collected.items():
+                        zf.write(path, arcname=name)
+
+                # Upload ZIP
+                s3.upload_file(
+                    new_zip,
+                    settings.dropbox_archive_bucket,
+                    zip_key,
+                    ExtraArgs={"Metadata": {"file-count": str(len(collected))}},
+                )
+                logger.info(f"Uploaded ZIP for {student_name}: {len(collected)} total files")
+
+                # Delete individual files
+                for key in keys:
+                    s3.delete_object(Bucket=settings.dropbox_archive_bucket, Key=key)
+                    logger.info(f"Deleted individual file: {key}")
+
+            migrated_students += 1
+            total_files += len(keys)
+        except Exception as e:
+            logger.error(f"Migration failed for {student_name}: {e}")
+            failed += len(keys)
+
+    logger.info(f"Migration complete: {migrated_students} students, {total_files} files, {failed} failed")
+    return {"students": migrated_students, "files": total_files, "failed": failed}
+
+
 def get_archived_files_zip_url(student_name: str, expiry_seconds: int = 3600) -> tuple[str | None, int]:
     """
     Return a presigned download URL for a student's pre-built archive ZIP.

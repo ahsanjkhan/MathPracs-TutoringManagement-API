@@ -59,6 +59,16 @@ def lambda_handler(event, context):
                 logger.error(f"Archive failed: {str(e)}")
                 return {"statusCode": 500, "body": {"error": str(e)}}
 
+        if action == 'migrate-s3-to-zips':
+            logger.info("migrate-s3-to-zips triggered")
+            try:
+                result = dropbox.migrate_s3_individual_files_to_zips()
+                logger.info(f"Migration completed: {result}")
+                return {"statusCode": 200, "body": result}
+            except Exception as e:
+                logger.error(f"Migration failed: {str(e)}")
+                return {"statusCode": 500, "body": {"error": str(e)}}
+
         # Default: sync-sessions
         logger.info("EventBridge sync triggered")
         print("EventBridge sync triggered")
