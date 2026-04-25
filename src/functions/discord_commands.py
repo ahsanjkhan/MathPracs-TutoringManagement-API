@@ -1050,30 +1050,22 @@ def handle_get_archived_files(interaction: dict, application_id: str) -> None:
         return
 
     try:
-        files = dropbox.get_archived_files_for_student(student_name)
+        url, file_count = dropbox.get_archived_files_zip_url(student_name)
     except Exception as e:
-        logger.error(f"Failed to list archived files for {student_name}: {e}")
+        logger.error(f"Failed to get archived files ZIP for {student_name}: {e}")
         send_followup(application_id, token, content=f"Error retrieving archived files: {str(e)}")
         return
 
-    if not files:
+    if not url:
         send_followup(application_id, token, content=f"No archived files found for **{student_name}**.")
         return
 
-    header = f"**Archived files for {student_name}** (links expire in 1 hour)\n"
-    chunks = []
-    current = header
-    for f in files:
-        line = f"\n📄 [{f['name']}]({f['url']})"
-        if len(current) + len(line) > 1900:
-            chunks.append(current)
-            current = line.lstrip("\n")
-        else:
-            current += line
-    chunks.append(current)
-
-    for chunk in chunks:
-        send_followup(application_id, token, content=chunk)
+    content = (
+        f"**Archived files for {student_name}** ({file_count} file{'s' if file_count != 1 else ''})\n"
+        f"[⬇️ Download all files]({url})\n"
+        f"*(link expires in 1 hour)*"
+    )
+    send_followup(application_id, token, content=content)
 
 
 # =============================================================================
