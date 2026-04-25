@@ -559,7 +559,12 @@ def _handle_profit(recipient: str, interaction: dict, application_id: str) -> No
     last_day = calendar.monthrange(year, month)[1]
     month_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=central_tz)
 
-    rows = _compute_monthly_student_profits(month_start, month_end, central_tz)
+    try:
+        rows = _compute_monthly_student_profits(month_start, month_end, central_tz)
+    except Exception as e:
+        logger.error(f"_compute_monthly_student_profits failed: {e}", exc_info=True)
+        send_followup(application_id, token, content=f"Error computing profit: {str(e)}")
+        return
 
     if not rows:
         send_followup(application_id, token, content=f"No completed sessions found for {now_central.strftime('%B %Y')}.")
@@ -604,17 +609,29 @@ def _handle_profit(recipient: str, interaction: dict, application_id: str) -> No
     name_label = recipient.capitalize()
 
     if not lines:
-        content = f"No sessions to report for {name_label} in {month_name}."
-    else:
-        breakdown = "\n".join(lines)
-        content = (
-            f"**Profit Report — {name_label} — {month_name}**\n\n"
-            f"{breakdown}\n\n"
-            f"**Net Profit ({name_label}): ${total_share:.2f}**\n\n"
-            f"_Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"
-        )
+        send_followup(application_id, token, content=f"No sessions to report for {name_label} in {month_name}.")
+        return
 
-    send_followup(application_id, token, content=content)
+    footer = (
+        f"\n**Net Profit ({name_label}): ${total_share:.2f}**\n"
+        f"_Based on sessions from {month_start.strftime('%b %d')} to {month_end.strftime('%b %d')} (Central Time)_"
+    )
+    header = f"**Profit Report — {name_label} — {month_name}**\n\n"
+
+    chunks = []
+    current = header
+    for line in lines:
+        entry = line + "\n"
+        if len(current) + len(entry) > 1900:
+            chunks.append(current)
+            current = entry
+        else:
+            current += entry
+    current += footer
+    chunks.append(current)
+
+    for chunk in chunks:
+        send_followup(application_id, token, content=chunk)
 
 
 def handle_profit_muaz(interaction: dict, application_id: str) -> None:
