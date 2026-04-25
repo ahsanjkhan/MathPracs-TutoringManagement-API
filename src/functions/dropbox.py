@@ -173,81 +173,124 @@ def extract_student_name_from_path(path: str) -> str | None:
 
 def archive_old_files_to_s3(days_old: int = 15) -> dict:
     """
-    Archive files older than days_old from Dropbox to S3 Glacier Instant Retrieval,
-    then delete them from Dropbox.
-    Returns summary dict with archived/failed counts.
+    Archive files older than days_old from Dropbox into per-student ZIPs in S3,
+    merging with any existing ZIP for that student, then delete from Dropbox.
+    Returns summary dict with students/files/failed counts.
     """
+    import os
+    import zipfile
+    import tempfile
+    from collections import defaultdict
+
     dbx = get_dropbox_client()
     s3 = boto3.client("s3", region_name=settings.aws_region)
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
     parent_folder = ssm_utils.get_dropbox_parent_folder()
 
-    archived = 0
-    failed = 0
-
-    # List all files recursively under the parent folder
+    # List all files in Dropbox
     result = dbx.files_list_folder(parent_folder, recursive=True)
     entries = list(result.entries)
     while result.has_more:
         result = dbx.files_list_folder_continue(result.cursor)
         entries.extend(result.entries)
 
+    # Group old files by student
+    student_files = defaultdict(list)
     for entry in entries:
         if entry.__class__.__name__ != 'FileMetadata':
             continue
-
-        file_modified = entry.server_modified.replace(tzinfo=timezone.utc)
-        if file_modified >= cutoff:
+        if entry.server_modified.replace(tzinfo=timezone.utc) >= cutoff:
             continue
+        student_name = extract_student_name_from_path(entry.path_display)
+        if student_name:
+            student_files[student_name].append(entry)
 
-        # Mirror the Dropbox path as the S3 key, e.g. "Student Folders/Aiden MathPracs/hw.pdf"
-        s3_key = entry.path_display.lstrip('/')
+    archived_students = 0
+    total_files = 0
+    failed = 0
 
+    for student_name, file_entries in student_files.items():
         try:
-            _, response = dbx.files_download(entry.path_display)
-            s3.put_object(
-                Bucket=settings.dropbox_archive_bucket,
-                Key=s3_key,
-                Body=response.content,
-                StorageClass='GLACIER_IR'
-            )
-            logger.info(f"Archived to S3: {s3_key}")
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                collected = {}  # filename -> local path
 
-            dbx.files_delete_v2(entry.path_display)
-            logger.info(f"Deleted from Dropbox: {entry.path_display}")
+                # Pull existing ZIP from S3 and extract its files
+                zip_key = f"zips/{student_name}_archived_files.zip"
+                existing_zip = os.path.join(tmp_dir, "existing.zip")
+                try:
+                    s3.download_file(settings.dropbox_archive_bucket, zip_key, existing_zip)
+                    with zipfile.ZipFile(existing_zip, 'r') as zf:
+                        for name in zf.namelist():
+                            out = os.path.join(tmp_dir, name)
+                            with zf.open(name) as src, open(out, 'wb') as dst:
+                                dst.write(src.read())
+                            collected[name] = out
+                    logger.info(f"Extracted existing ZIP for {student_name}: {len(collected)} files")
+                except Exception:
+                    logger.info(f"No existing ZIP for {student_name}, starting fresh")
 
-            archived += 1
+                # Download new files from Dropbox (new files overwrite on name clash)
+                for entry in file_entries:
+                    local = os.path.join(tmp_dir, entry.name)
+                    _, response = dbx.files_download(entry.path_display)
+                    with open(local, 'wb') as f:
+                        f.write(response.content)
+                    collected[entry.name] = local
+                    logger.info(f"Downloaded from Dropbox: {entry.path_display}")
+
+                # Build new ZIP
+                new_zip = os.path.join(tmp_dir, f"{student_name}_archived_files.zip")
+                with zipfile.ZipFile(new_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for name, path in collected.items():
+                        zf.write(path, arcname=name)
+
+                # Upload to S3 Standard (no retrieval fee — needed for future merges)
+                s3.upload_file(
+                    new_zip,
+                    settings.dropbox_archive_bucket,
+                    zip_key,
+                    ExtraArgs={"Metadata": {"file-count": str(len(collected))}},
+                )
+                logger.info(f"Uploaded ZIP for {student_name}: {len(collected)} total files")
+
+                # Only delete from Dropbox after successful upload
+                for entry in file_entries:
+                    try:
+                        dbx.files_delete_v2(entry.path_display)
+                        logger.info(f"Deleted from Dropbox: {entry.path_display}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete from Dropbox {entry.path_display}: {e}")
+
+            archived_students += 1
+            total_files += len(file_entries)
         except Exception as e:
-            logger.error(f"Failed to archive {entry.path_display}: {e}")
-            failed += 1
+            logger.error(f"Failed to archive files for {student_name}: {e}")
+            failed += len(file_entries)
 
-    logger.info(f"Archive complete: {archived} archived, {failed} failed")
-    return {"archived": archived, "failed": failed}
+    logger.info(f"Archive complete: {archived_students} students, {total_files} new files, {failed} failed")
+    return {"students": archived_students, "files": total_files, "failed": failed}
 
 
-def get_archived_files_for_student(student_name: str, expiry_seconds: int = 3600) -> list[dict]:
+def get_archived_files_zip_url(student_name: str, expiry_seconds: int = 3600) -> tuple[str | None, int]:
     """
-    List archived files in S3 for a given student and generate presigned download URLs.
-    Returns list of dicts with 'name' and 'url' keys.
+    Return a presigned download URL for a student's pre-built archive ZIP.
+    Returns (presigned_url, file_count) or (None, 0) if no archive exists.
     """
     s3 = boto3.client("s3", region_name=settings.aws_region)
-    parent_folder = ssm_utils.get_dropbox_parent_folder().lstrip('/')
-    prefix = f"{parent_folder}/{student_name} MathPracs/"
+    zip_key = f"zips/{student_name}_archived_files.zip"
 
-    results = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.dropbox_archive_bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            file_name = key.split("/")[-1]
-            url = s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": settings.dropbox_archive_bucket, "Key": key},
-                ExpiresIn=expiry_seconds
-            )
-            results.append({"name": file_name, "url": url})
+    try:
+        head = s3.head_object(Bucket=settings.dropbox_archive_bucket, Key=zip_key)
+        file_count = int(head.get("Metadata", {}).get("file-count", "0"))
+    except Exception:
+        return None, 0
 
-    return results
+    url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.dropbox_archive_bucket, "Key": zip_key},
+        ExpiresIn=expiry_seconds,
+    )
+    return url, file_count
 
 
 def get_recent_changes() -> list[dict]:
