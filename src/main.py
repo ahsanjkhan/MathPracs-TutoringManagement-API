@@ -69,6 +69,34 @@ def lambda_handler(event, context):
                 logger.error(f"Migration failed: {str(e)}")
                 return {"statusCode": 500, "body": {"error": str(e)}}
 
+        if action == 'refresh-all-tutor-messages':
+            logger.info("refresh-all-tutor-messages triggered")
+            from src.functions import tutor_functions, discord_utils
+            tutors = tutor_functions.get_all_tutors()
+            updated = 0
+            skipped = 0
+            failed = 0
+            for tutor in tutors:
+                if not tutor.discord_channel_id or not tutor.discord_onboarding_message_id:
+                    skipped += 1
+                    continue
+                try:
+                    success = discord_utils.update_onboarding_message(
+                        tutor.discord_channel_id,
+                        tutor.discord_onboarding_message_id,
+                        tutor.display_name,
+                    )
+                    if success:
+                        updated += 1
+                    else:
+                        failed += 1
+                except Exception as e:
+                    logger.error(f"Failed to refresh message for {tutor.tutor_name}: {e}")
+                    failed += 1
+            result = {"updated": updated, "skipped": skipped, "failed": failed}
+            logger.info(f"refresh-all-tutor-messages complete: {result}")
+            return {"statusCode": 200, "body": result}
+
         # Default: sync-sessions
         logger.info("EventBridge sync triggered")
         print("EventBridge sync triggered")
