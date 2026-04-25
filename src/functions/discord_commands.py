@@ -629,13 +629,7 @@ def handle_profit_ahsan(interaction: dict, application_id: str) -> None:
 
 def handle_help(interaction: dict) -> dict:
     """Handle /help command — lists all commands grouped by role."""
-    tutor_commands = [
-        ("my_sessions",        "View your scheduled sessions for the next 24 hours"),
-        ("my_earnings",        "View your earnings for the current month"),
-        ("student_links",      "Get meeting, upload, and file request links for a student"),
-        ("get_archived_files", "Get download links for a student's archived files from Cloud"),
-        ("refresh_commands",   "Update your pinned commands message"),
-    ]
+    tutor_commands = discord_utils.TUTOR_COMMANDS
     admin_commands = [
         ("ping_bot",             "Test if the bot is connected"),
         ("get_tutor",            "Get details for a tutor"),

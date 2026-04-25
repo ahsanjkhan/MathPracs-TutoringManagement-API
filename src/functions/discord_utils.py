@@ -12,6 +12,16 @@ settings = get_settings()
 
 _discord_credentials = None
 
+# Single source of truth for tutor-facing commands.
+# Used by both the pinned onboarding message and /help.
+TUTOR_COMMANDS: list[tuple[str, str]] = [
+    ("my_sessions",        "View your scheduled sessions for the next 24 hours"),
+    ("my_earnings",        "View your earnings for the current month"),
+    ("student_links",      "Get meeting, upload, and file request links for a student"),
+    ("get_archived_files", "Download a student's archived files from Cloud"),
+    ("refresh_commands",   "Update the pinned message with latest commands"),
+]
+
 
 def get_discord_credentials() -> dict:
     """Get Discord credentials (bot_token, guild_id) from AWS Secrets Manager."""
@@ -400,18 +410,9 @@ def notify_homework_upload(student_name: str, file_name: str, tutor_discord_chan
 
 
 def get_onboarding_message_content(tutor_name: str) -> str:
-    """Get the onboarding message content. Commands list is dynamically generated from TUTOR_COMMANDS."""
-    TUTOR_COMMANDS = {
-        "my_sessions": "View your scheduled sessions for the next 24 hours",
-        "my_earnings": "View your earnings for the current month",
-        "student_links": "Get meeting, upload, and file request links for a student",
-        "refresh_commands": "Update the pinned message with latest commands",
-    }
-
+    """Get the onboarding message content. Commands list is driven by TUTOR_COMMANDS."""
     first_name = tutor_name.split()[0] if tutor_name else "Tutor"
-
-    # Build commands list dynamically
-    commands_list = "\n".join([f"• `/{cmd}` - {desc}" for cmd, desc in TUTOR_COMMANDS.items()])
+    commands_list = "\n".join(f"• `/{cmd}` - {desc}" for cmd, desc in TUTOR_COMMANDS)
 
     return f"""👋 **Welcome, {first_name}!**
 
