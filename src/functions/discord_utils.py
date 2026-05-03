@@ -127,7 +127,7 @@ def create_tutor_channel(tutor_name: str) -> str | None:
                 "name": channel_name,
                 "type": 0,  # Text channel
                 "topic": f"Private channel for {tutor_name}",
-                "parent_id": "1475262651197296680",
+                "parent_id": creds.get("Tutors-Chats_category_id", ""),
                 "permission_overwrites": permission_overwrites
             },
             timeout=30.0
@@ -191,7 +191,7 @@ def create_dropbox_channel(tutor_name: str) -> str | None:
                 "name": channel_name,
                 "type": 0,
                 "topic": f"Dropbox upload notifications for {tutor_name}",
-                "parent_id": "1477999257318457436",
+                "parent_id": creds.get("Dropbox-Notifs_category_id", ""),
                 "permission_overwrites": permission_overwrites
             },
             timeout=30.0
@@ -254,7 +254,7 @@ def create_feedback_channel(tutor_name: str) -> str | None:
                 "name": channel_name,
                 "type": 0,
                 "topic": f"Session feedback forms for {tutor_name}",
-                "parent_id": "1478000275708186694",
+                "parent_id": creds.get("Session-Feedbacks_category_id", ""),
                 "permission_overwrites": permission_overwrites
             },
             timeout=30.0
@@ -317,7 +317,7 @@ def create_session_reminders_channel(tutor_name: str) -> str | None:
                 "name": channel_name,
                 "type": 0,
                 "topic": f"Session reminders for {tutor_name}",
-                "parent_id": "1478848046543536372",
+                "parent_id": creds.get("Session-Reminders_category_id", ""),
                 "permission_overwrites": permission_overwrites
             },
             timeout=30.0
