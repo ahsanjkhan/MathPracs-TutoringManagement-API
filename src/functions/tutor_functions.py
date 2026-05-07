@@ -158,6 +158,19 @@ def set_tutor_dropbox_channel(tutor_id: str, channel_id: str) -> bool:
     return True
 
 
+def set_tutor_payments_channel(tutor_id: str, channel_id: str) -> bool:
+    """Set the payments summary Discord channel for a tutor."""
+    existing = get_tutor(tutor_id)
+    if not existing:
+        return False
+    dynamodb.update_item(
+        settings.tutors_table,
+        {"tutorId": tutor_id},
+        {"paymentsDiscordChannelId": channel_id, "updatedAt": datetime.now(timezone.utc).isoformat()},
+    )
+    return True
+
+
 def update_tutor(tutor_id: str, updates: TutorV2Update) -> Optional[TutorV2]:
     """Update operational tutor fields in TutorsV2 (display_name, tutor_name, status).
     Used when refreshing tutors from G Cal or when sync notices that the calendar name has changed"""
@@ -179,6 +192,7 @@ def update_tutor(tutor_id: str, updates: TutorV2Update) -> Optional[TutorV2]:
     update_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
     dynamodb.update_item(settings.tutors_table, {"tutorId": tutor_id}, update_data)
     return get_tutor(tutor_id)
+
 
 def update_tutor_metadata_name(tutor_id: str, updates: TutorMetadataV2UpdateNameOnly) -> Optional[TutorMetadataV2]:
     """Update tutor name and display name metadata fields in TutorsMetadataV2.
@@ -236,6 +250,7 @@ def delete_tutor(tutor_id: str) -> bool:
         {"status": TutorStatus.INACTIVE.value, "updatedAt": datetime.now(timezone.utc).isoformat()},
     )
     return True
+
 
 def extract_tutor_name_from_display_name(display_name: str) -> str:
     """Takes input of calendar name like Jacob Tutoring Schedule and extracts Jacob."""
