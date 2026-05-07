@@ -23,6 +23,7 @@ class TutorV2(BaseModel):
     dropbox_discord_channel_id: Optional[str] = None
     feedback_discord_channel_id: Optional[str] = None
     session_reminders_discord_channel_id: Optional[str] = None
+    payments_discord_channel_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -47,6 +48,8 @@ class TutorV2(BaseModel):
             data["feedbackDiscordChannelId"] = self.feedback_discord_channel_id
         if self.session_reminders_discord_channel_id:
             data["sessionRemindersDiscordChannelId"] = self.session_reminders_discord_channel_id
+        if self.payments_discord_channel_id:
+            data["paymentsDiscordChannelId"] = self.payments_discord_channel_id
         return data
 
     @classmethod
@@ -64,6 +67,7 @@ class TutorV2(BaseModel):
             dropbox_discord_channel_id=item.get("dropboxDiscordChannelId"),
             feedback_discord_channel_id=item.get("feedbackDiscordChannelId"),
             session_reminders_discord_channel_id=item.get("sessionRemindersDiscordChannelId"),
+            payments_discord_channel_id=item.get("paymentsDiscordChannelId"),
             created_at=datetime.fromisoformat(item["createdAt"]),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
