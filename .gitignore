@@ -1,6 +1,3 @@
-# Scripts (local utilities, not part of deployment)
-scripts/
-
 # Python
 __pycache__/
 *.py[cod]
