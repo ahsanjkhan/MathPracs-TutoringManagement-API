@@ -58,7 +58,7 @@ def list_calendars(sync_token: Optional[str] = None) -> tuple[list[dict], Option
         try:
             response = service.calendarList().list(**request_params).execute()
         except Exception as e:
-            if "Sync token" in str(e) and "invalid" in str(e).lower():
+            if "fullSyncRequired" in str(e) or "410" in str(e):
                 return list_calendars(sync_token=None)
             raise
 
@@ -100,7 +100,7 @@ def list_events(calendar_id: str, sync_token: Optional[str] = None, time_min: Op
         try:
             response = service.events().list(**request_params).execute()
         except Exception as e:
-            if "Sync token" in str(e) and "invalid" in str(e).lower():
+            if "fullSyncRequired" in str(e) or "410" in str(e):
                 return list_events(calendar_id, sync_token=None, time_min=time_min, time_max=time_max)
             raise
 
