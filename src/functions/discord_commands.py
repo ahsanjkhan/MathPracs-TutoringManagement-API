@@ -444,7 +444,7 @@ def handle_hours_tutored_chart(interaction: dict, application_id: str) -> None:
 
 
 # Students whose profit goes 100% to Muaz (not split with Ahsan)
-_MUAZ_ONLY_STUDENTS = {"Felix", "Jay"}
+_MUAZ_ONLY_STUDENTS = {"Felix", "Jay", "Ana", "Gabe"}
 
 
 def _is_demo(s) -> bool:
@@ -462,7 +462,7 @@ def _compute_monthly_student_profits(month_start: datetime, month_end: datetime,
       - Regular:  revenue = hours × weekly_tier_rate,       cost = hours × tutor_rate
       - No-show:  revenue = hours × weekly_tier_rate × 0.5, cost = hours × tutor_rate
       - Demo:     revenue = $0,                             cost = hours × tutor_rate
-    Split (Felix/Jay vs 50/50) is applied in _handle_profit, not here.
+    Split (Felix/Jay/Ana/Gabe vs 50/50) is applied in _handle_profit, not here.
     """
     student_meta_map = {m.student_name: m for m in student_functions.get_all_student_metadata()}
     tutor_meta_map = tutor_functions.get_all_tutors_metadata()
@@ -541,7 +541,7 @@ def _handle_profit(recipient: str, interaction: dict, application_id: str) -> No
     Profit report for 'muaz' or 'ahsan'.
 
     Split rule is based solely on the student, not session type:
-      - Felix / Jay → 100% Muaz, 0% Ahsan
+      - Felix / Jay / Ana / Gabe → 100% Muaz, 0% Ahsan
       - All others  → 50/50
 
     Revenue/cost per session type:
