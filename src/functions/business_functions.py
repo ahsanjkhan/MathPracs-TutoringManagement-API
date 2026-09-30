@@ -3,7 +3,7 @@ from boto3.dynamodb.conditions import Key
 from src.config import get_settings
 from src.functions import dynamodb
 from src.models.business_internal_debt_model import BusinessInternalDebt
-from src.models.student_v2_model import TransactionType
+from src.models.student_v2_model import PaymentCollector, TransactionType
 
 settings = get_settings()
 
@@ -18,3 +18,14 @@ def get_outstanding_owed_to(partner: str) -> float:
         else:
             outstanding -= debt.amount
     return round(outstanding, 2)
+
+
+def get_net_outstanding_summary() -> str:
+    ahsan = PaymentCollector.AHSAN.value
+    muaz = PaymentCollector.MUAZ.value
+    net = round(get_outstanding_owed_to(ahsan) - get_outstanding_owed_to(muaz), 2)
+    if net > 0:
+        return f"{muaz} owes {ahsan} ${net:.2f}"
+    if net < 0:
+        return f"{ahsan} owes {muaz} ${-net:.2f}"
+    return "Nothing owed"
