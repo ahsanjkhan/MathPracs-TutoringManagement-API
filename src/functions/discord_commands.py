@@ -1135,12 +1135,12 @@ def handle_record_partner_payment_received(interaction: dict) -> dict:
 
         dynamodb.put_item(settings.business_internal_debts_table, debt.to_dynamodb())
 
-        outstanding = business_functions.get_outstanding_owed_to(action_by)
+        outstanding_summary = business_functions.get_net_outstanding_summary()
 
         return {
             "type": 4,
             "data": {
-                "content": f"Successfully recorded: **{action_by}** received **${amount:.2f}** from {paid_by}\nStill owed to {action_by}: **${outstanding:.2f}**",
+                "content": f"Successfully recorded: **{action_by}** received **${amount:.2f}** from {paid_by}\nTotal outstanding: **{outstanding_summary}**",
                 "flags": 64
             }
         }
