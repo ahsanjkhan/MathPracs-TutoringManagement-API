@@ -4,6 +4,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 import uuid
 
+from src.models.student_v2_model import Transaction, TransactionType
+
 
 class TutorStatus(str, Enum):
     ACTIVE = "active"
@@ -129,3 +131,51 @@ class TutorMetadataV2Update(BaseModel):
     tutor_email: Optional[str] = None
     tutor_phone: Optional[str] = None
     tutor_timezone: Optional[str] = None
+
+
+class TutorTransaction(BaseModel):
+    tutor_id: str
+    transaction_key: str
+    transaction_type: TransactionType
+    amount: float
+    action_by: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dynamodb(self) -> dict:
+        return {
+            "tutorId": self.tutor_id,
+            "transactionKey": self.transaction_key,
+            "transactionType": self.transaction_type.value,
+            "amount": self.amount,
+            "actionBy": self.action_by,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+    @classmethod
+    def from_dynamodb(cls, item: dict) -> "TutorTransaction":
+        return cls(
+            tutor_id=item["tutorId"],
+            transaction_key=item["transactionKey"],
+            transaction_type=TransactionType(item["transactionType"]),
+            amount=float(item["amount"]),
+            action_by=item["actionBy"],
+            timestamp=datetime.fromisoformat(item["timestamp"]),
+        )
+
+
+class TutorPaymentRecord(BaseModel):
+    tutor_id: str
+    amount: float
+    action_by: str
+    transaction_type: TransactionType = TransactionType.DEBIT
+
+    def to_transaction(self) -> TutorTransaction:
+        timestamp = datetime.now(timezone.utc)
+        return TutorTransaction(
+            tutor_id=self.tutor_id,
+            transaction_key=Transaction.create_transaction_key(self.transaction_type, timestamp),
+            transaction_type=self.transaction_type,
+            amount=self.amount,
+            action_by=self.action_by,
+            timestamp=timestamp
+        )

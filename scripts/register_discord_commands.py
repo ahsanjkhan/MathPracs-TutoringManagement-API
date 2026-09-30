@@ -10,6 +10,7 @@ import sys
 import boto3
 import httpx
 from src.config import get_settings
+from src.functions.utils import retry_on_error
 
 settings = get_settings()
 
@@ -147,6 +148,50 @@ COMMANDS = [
         **ADMIN_ONLY,
     },
     {
+        "name": "record_tutor_payment_sent",
+        "description": "Record a payment sent to a tutor",
+        "options": [
+            {
+                "name": "tutor_name",
+                "description": "Tutor name",
+                "type": 3,  # STRING
+                "required": True,
+            },
+            {
+                "name": "amount",
+                "description": "Payment amount (positive number)",
+                "type": 10,  # NUMBER
+                "required": True,
+            },
+            {
+                "name": "action_by",
+                "description": "Who sent the payment (muaz, ahsan)",
+                "type": 3,  # STRING
+                "required": True,
+            },
+        ],
+        **ADMIN_ONLY,
+    },
+    {
+        "name": "record_partner_payment_received",
+        "description": "Record a payment received from your business partner",
+        "options": [
+            {
+                "name": "amount",
+                "description": "Payment amount (positive number)",
+                "type": 10,  # NUMBER
+                "required": True,
+            },
+            {
+                "name": "action_by",
+                "description": "Who received the payment (muaz, ahsan)",
+                "type": 3,  # STRING
+                "required": True,
+            },
+        ],
+        **ADMIN_ONLY,
+    },
+    {
         "name": "profit_muaz",
         "description": "Profit report for Muaz for the current month",
         **ADMIN_ONLY,
@@ -186,16 +231,22 @@ def register_commands():
         "Content-Type": "application/json",
     }
 
-    response = httpx.put(url, headers=headers, json=COMMANDS, timeout=30.0)
+    for command in COMMANDS:
+        try:
+            registered = register_command(url, headers, command)
+            print(f"  /{registered['name']}")
+        except Exception as e:
+            print(f"ERROR registering /{command['name']}: {e}")
+            sys.exit(1)
 
-    if response.status_code == 200:
-        registered = response.json()
-        print(f"Successfully registered {len(registered)} commands:")
-        for cmd in registered:
-            print(f"  /{cmd['name']}")
-    else:
-        print(f"ERROR: {response.status_code} - {response.text}")
-        sys.exit(1)
+    print(f"Successfully registered {len(COMMANDS)} commands")
+
+
+@retry_on_error()
+def register_command(url: str, headers: dict, command: dict) -> dict:
+    response = httpx.post(url, headers=headers, json=command, timeout=30.0)
+    response.raise_for_status()
+    return response.json()
 
 
 if __name__ == "__main__":

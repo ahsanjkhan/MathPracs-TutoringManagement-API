@@ -255,3 +255,8 @@ def delete_tutor(tutor_id: str) -> bool:
 def extract_tutor_name_from_display_name(display_name: str) -> str:
     """Takes input of calendar name like Jacob Tutoring Schedule and extracts Jacob."""
     return display_name.split()[0] if display_name and display_name.split() else ""
+
+
+def update_tutor_balance(tutor_id: str, amount: float) -> float:
+    updated_item = dynamodb.add_to_attribute(settings.tutors_table, {"tutorId": tutor_id}, "balance", amount)
+    return float(updated_item.get("balance", 0))
