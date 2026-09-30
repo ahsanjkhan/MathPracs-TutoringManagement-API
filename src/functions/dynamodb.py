@@ -79,6 +79,18 @@ def update_item(table_name: str, key: dict[str, Any], updates: dict[str, Any]) -
     return response.get("Attributes", {})
 
 
+def add_to_attribute(table_name: str, key: dict[str, Any], attribute: str, amount: float) -> dict[str, Any]:
+    table = get_table(table_name)
+    response = table.update_item(
+        Key=key,
+        UpdateExpression="ADD #attribute :amount",
+        ExpressionAttributeNames={"#attribute": attribute},
+        ExpressionAttributeValues={":amount": _to_dynamodb_safe(amount)},
+        ReturnValues="ALL_NEW",
+    )
+    return response.get("Attributes", {})
+
+
 def delete_item(table_name: str, key: dict[str, Any]) -> None:
     """Delete an item by primary key."""
     table = get_table(table_name)

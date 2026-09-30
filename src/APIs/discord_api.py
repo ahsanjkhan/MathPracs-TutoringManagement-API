@@ -114,6 +114,10 @@ async def discord_interactions(request: Request):
             return DEFERRED
         elif command_name == "record_payment":
             return discord_commands.handle_record_payment(interaction)
+        elif command_name == "record_tutor_payment_sent":
+            return discord_commands.handle_record_tutor_payment_sent(interaction)
+        elif command_name == "record_partner_payment_received":
+            return discord_commands.handle_record_partner_payment_received(interaction)
         elif command_name == "profit_muaz":
             discord_utils.invoke_discord_task("profit_muaz", interaction, application_id)
             return DEFERRED

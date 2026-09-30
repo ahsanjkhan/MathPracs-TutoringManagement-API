@@ -49,6 +49,7 @@ src/
 │   ├── tutor_functions.py  # Tutor business logic
 │   ├── session_functions.py# Session business logic
 │   ├── student_functions.py# Student business logic
+│   ├── business_functions.py# Business partner debt logic
 │   ├── sync_functions.py   # Calendar/event sync logic
 │   ├── discord_commands.py # Discord slash command handlers
 │   ├── discord_utils.py    # Discord API utilities
@@ -65,6 +66,7 @@ src/
 │   ├── tutor_v2_model.py       # Tutor data models
 │   ├── session_model.py        # Session data models
 │   ├── student_v2_model.py     # Student data models
+│   ├── business_internal_debt_model.py # Business partner debt models
 │   └── calendar_state_model.py # Sync state model
 └── scripts/
     └── register_discord_commands.py  # Discord command registration
@@ -111,6 +113,8 @@ The bot runs serverlessly via HTTP interactions — no EC2 or persistent connect
 | `/update_student <name>` | Update student via modal |
 | `/tutor_monthly_payments` | View total earnings across all tutors for the current month |
 | `/hours_tutored_chart` | Bar chart of total hours tutored per month |
+| `/record_tutor_payment_sent <tutor_name> <amount> <action_by>` | Record a payment sent to a tutor (DEBIT in TutorTransactions, raises the tutor's balance) |
+| `/record_partner_payment_received <amount> <action_by>` | Record a payment received from the business partner (CREDIT in BusinessInternalDebts) |
 | `/help` | Show all commands and descriptions |
 
 ### Session Feedback
@@ -215,9 +219,13 @@ Raising a Pull Request for commits on a feature branch, getting it approved, and
 
 ### 6. Register Discord Slash Commands
 
+Run once per account (Beta and Prod, with that account's credentials exported) after the first deploy, and again after any slash command is added or changed:
+
 ```bash
-python -m src.scripts.register_discord_commands
+python3 -m scripts.register_discord_commands
 ```
+
+Each command is created or updated individually; existing commands are never deleted. To retire a command, delete it in Discord separately.
 
 Then in Discord Developer Portal, set **Interactions Endpoint URL** to:
 ```

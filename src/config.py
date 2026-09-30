@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     students_table: str = "StudentsV2"
     students_metadata_table: str = "StudentsMetadataV2"
     transactions_table: str = "Transactions"
+    tutor_transactions_table: str = "TutorTransactions"
+    business_internal_debts_table: str = "BusinessInternalDebts"
 
     # Secrets Manager
     google_credentials_secret_name: str = "tutoring-api/google-credentials-cdk"

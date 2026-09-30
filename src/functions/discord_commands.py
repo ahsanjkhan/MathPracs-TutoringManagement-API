@@ -23,11 +23,13 @@ from src.functions import (
     discord_utils,
     groq_utils,
     dropbox,
+    business_functions,
 )
 from src.functions.google_docs import extract_student_name
 from src.models.session_model import SessionStatus
 from src.models.student_v2_model import StudentMetadataV2Update, PaymentCollector, PaymentRecord, TransactionType
-from src.models.tutor_v2_model import TutorStatus, TutorMetadataV2Update
+from src.models.tutor_v2_model import TutorStatus, TutorMetadataV2Update, TutorPaymentRecord
+from src.models.business_internal_debt_model import PARTNERS, PartnerPaymentRecord
 
 from decimal import Decimal
 
@@ -654,6 +656,8 @@ def handle_help(interaction: dict) -> dict:
         ("update_tutor",         "Update tutor details"),
         ("update_student",       "Update student details"),
         ("record_payment",       "Record a payment transaction for a student"),
+        ("record_tutor_payment_sent",       "Record a payment sent to a tutor"),
+        ("record_partner_payment_received", "Record a payment received from your business partner"),
         ("earnings_all_tutors",  "View total earnings across all tutors for the current month"),
         ("hours_tutored_chart",  "Bar chart of total hours tutored per month"),
         ("profit_muaz",          "Profit report for Muaz's students (revenue minus tutor cost)"),
@@ -1047,6 +1051,102 @@ def handle_record_payment(interaction: dict) -> dict:
 
     except Exception as e:
         return {"type": 4, "data": {"content": f"Error recording payment: {str(e)}", "flags": 64}}
+
+
+def handle_record_tutor_payment_sent(interaction: dict) -> dict:
+    options = interaction.get("data", {}).get("options", [])
+
+    tutor_name = None
+    amount = None
+    action_by = None
+
+    for opt in options:
+        name = opt.get("name")
+        value = opt.get("value")
+        if name == "tutor_name":
+            tutor_name = value
+        elif name == "amount":
+            amount = abs(float(value))
+        elif name == "action_by":
+            action_by = value if value else None
+            if action_by and action_by not in PARTNERS:
+                return {"type": 4, "data": {"content": f"Invalid action_by. Must be one of: {', '.join(sorted(PARTNERS))}", "flags": 64}}
+
+    if not all([tutor_name, amount is not None, action_by]):
+        return {"type": 4, "data": {"content": "Please provide tutor_name, amount, and action_by.", "flags": 64}}
+
+    tutor = tutor_functions.get_tutor_by_name(tutor_name)
+    if not tutor:
+        return {"type": 4, "data": {"content": f"Tutor '{tutor_name}' not found.", "flags": 64}}
+
+    try:
+        payment_record = TutorPaymentRecord(
+            tutor_id=tutor.tutor_id,
+            amount=amount,
+            action_by=action_by
+        )
+
+        transaction = payment_record.to_transaction()
+
+        dynamodb.put_item(settings.tutor_transactions_table, transaction.to_dynamodb())
+
+        new_balance = tutor_functions.update_tutor_balance(tutor.tutor_id, amount)
+
+        return {
+            "type": 4,
+            "data": {
+                "content": f"Successfully recorded: **{tutor.tutor_name}** tutor payment of **${amount:.2f}** sent by {action_by}\nNew balance: **${new_balance:.2f}**",
+                "flags": 64
+            }
+        }
+
+    except Exception as e:
+        return {"type": 4, "data": {"content": f"Error recording tutor payment: {str(e)}", "flags": 64}}
+
+
+def handle_record_partner_payment_received(interaction: dict) -> dict:
+    options = interaction.get("data", {}).get("options", [])
+
+    amount = None
+    action_by = None
+
+    for opt in options:
+        name = opt.get("name")
+        value = opt.get("value")
+        if name == "amount":
+            amount = abs(float(value))
+        elif name == "action_by":
+            action_by = value if value else None
+            if action_by and action_by not in PARTNERS:
+                return {"type": 4, "data": {"content": f"Invalid action_by. Must be one of: {', '.join(sorted(PARTNERS))}", "flags": 64}}
+
+    if not all([amount is not None, action_by]):
+        return {"type": 4, "data": {"content": "Please provide amount and action_by.", "flags": 64}}
+
+    paid_by = next(partner for partner in PARTNERS if partner != action_by)
+
+    try:
+        payment_record = PartnerPaymentRecord(
+            amount=amount,
+            action_by=action_by
+        )
+
+        debt = payment_record.to_debt()
+
+        dynamodb.put_item(settings.business_internal_debts_table, debt.to_dynamodb())
+
+        outstanding = business_functions.get_outstanding_owed_to(action_by)
+
+        return {
+            "type": 4,
+            "data": {
+                "content": f"Successfully recorded: **{action_by}** received **${amount:.2f}** from {paid_by}\nStill owed to {action_by}: **${outstanding:.2f}**",
+                "flags": 64
+            }
+        }
+
+    except Exception as e:
+        return {"type": 4, "data": {"content": f"Error recording partner payment: {str(e)}", "flags": 64}}
 
 
 def handle_get_archived_files(interaction: dict, application_id: str) -> None:
