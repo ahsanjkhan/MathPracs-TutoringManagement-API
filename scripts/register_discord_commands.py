@@ -231,22 +231,30 @@ def register_commands():
         "Content-Type": "application/json",
     }
 
+    created = 0
+    updated = 0
     for command in COMMANDS:
         try:
-            registered = register_command(url, headers, command)
-            print(f"  /{registered['name']}")
+            response = register_command(url, headers, command)
         except Exception as e:
             print(f"ERROR registering /{command['name']}: {e}")
             sys.exit(1)
 
-    print(f"Successfully registered {len(COMMANDS)} commands")
+        if response.status_code == 201:
+            created += 1
+            print(f"  /{command['name']} — created (new)")
+        else:
+            updated += 1
+            print(f"  /{command['name']} — updated (already existed)")
+
+    print(f"Successfully registered {len(COMMANDS)} commands ({created} created, {updated} updated)")
 
 
 @retry_on_error()
-def register_command(url: str, headers: dict, command: dict) -> dict:
+def register_command(url: str, headers: dict, command: dict) -> httpx.Response:
     response = httpx.post(url, headers=headers, json=command, timeout=30.0)
     response.raise_for_status()
-    return response.json()
+    return response
 
 
 if __name__ == "__main__":
