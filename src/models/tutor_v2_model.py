@@ -26,6 +26,7 @@ class TutorV2(BaseModel):
     feedback_discord_channel_id: Optional[str] = None
     session_reminders_discord_channel_id: Optional[str] = None
     payments_discord_channel_id: Optional[str] = None
+    balance: float = 0.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -70,6 +71,7 @@ class TutorV2(BaseModel):
             feedback_discord_channel_id=item.get("feedbackDiscordChannelId"),
             session_reminders_discord_channel_id=item.get("sessionRemindersDiscordChannelId"),
             payments_discord_channel_id=item.get("paymentsDiscordChannelId"),
+            balance=float(item.get("balance", 0.0)),
             created_at=datetime.fromisoformat(item["createdAt"]),
             updated_at=datetime.fromisoformat(item["updatedAt"]),
         )
