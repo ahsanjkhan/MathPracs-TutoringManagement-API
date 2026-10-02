@@ -778,6 +778,7 @@ DiscOnMsgId:  {tutor.discord_onboarding_message_id}
 Created At:   {tutor.created_at.strftime('%Y-%m-%d %H:%M')}
 Updated At:   {tutor.updated_at.strftime('%Y-%m-%d %H:%M')}
 Hourly Rate:  ${meta.hourly_rate}
+Balance:      ${tutor.balance:.2f}
 Email:        {meta.tutor_email}
 Phone:        {meta.tutor_phone}
 Timezone:     {meta.tutor_timezone}
